@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Dev Dashboard</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      padding: 20px;
+      background: #1a1a1a;
+      color: white;
+      margin: 0;
+    }
+    h1 {
+      color: #3b82f6;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    button.danger {
+      background: #ef4444;
+    }
+    button.danger:hover {
+      background: #dc2626;
+    }
+    .service {
+      border: 2px solid #333;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+      background: #2a2a2a;
+    }
+    .service.running {
+      border-color: #10b981;
+    }
+    .service.stopped {
+      border-color: #6b7280;
+    }
+    .service.crashed {
+      border-color: #ef4444;
+    }
+    .service h3 {
+      margin-top: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .status-dot.running {
+      background: #10b981;
+    }
+    .status-dot.stopped {
+      background: #6b7280;
+    }
+    .status-dot.crashed {
+      background: #ef4444;
+    }
+    .controls {
+      margin: 20px 0;
+      padding: 15px;
+      background: #2a2a2a;
+      border-radius: 8px;
+    }
+    #services {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>��� Developer Dashboard</h1>
+  
+  <div class="controls">
+    <button onclick="addTestService()">+ Add Test Service</button>
+    <button onclick="loadServices()">��� Refresh</button>
+  </div>
+
+  <div id="services"></div>
+
+  <script>
+    async function loadServices() {
+      const services = await window.electronAPI.getServices();
+      const container = document.getElementById('services');
+      
+      if (services.length === 0) {
+        container.innerHTML = '<p style="color: #6b7280;">No services yet. Click "Add Test Service" to get started!</p>';
+        return;
+      }
+      
+      container.innerHTML = '';
+      
+      services.forEach(service => {
+        const div = document.createElement('div');
+        div.className = `service ${service.status}`;
+        div.innerHTML = `
+          <h3>
+            <span class="status-dot ${service.status}"></span>
+            ${service.name}
+            <span style="font-size: 14px; color: #6b7280; font-weight: normal;">(${service.status})</span>
+          </h3>
+          <p style="color: #9ca3af; font-size: 14px;">
+            <strong>Command:</strong> ${service.command}<br>
+            <strong>Directory:</strong> ${service.cwd}<br>
+            <strong>Memory:</strong> ${service.memory} | <strong>CPU:</strong> ${service.cpu} | <strong>Uptime:</strong> ${service.uptime}
+          </p>
+          <div>
+            <button onclick="startService('${service.id}')">▶️ Start</button>
+            <button onclick="stopService('${service.id}')">⏹️ Stop</button>
+            <button onclick="restartService('${service.id}')">��� Restart</button>
+            <button class="danger" onclick="deleteService('${service.id}')">���️ Delete</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+async function addTestService() {
+  const cwd = await window.electronAPI.getCwd();
+  const result = await window.electronAPI.addService({
+    name: 'Test Service ' + Date.now(),
+    command: 'node -e "console.log(\'Running...\'); setInterval(() => console.log(Date.now()), 2000)"',
+    cwd: 'C:\\Users\\LENOVO\\Desktop\\WORK\\dev-dashboard',
+    autoRestart: false,
+    autoStart: false
+  });
+  console.log('Service added:', result);
+  loadServices();
+}   
+
+    async function startService(id) {
+      const result = await window.electronAPI.startService(id);
+      console.log('Start:', result);
+      setTimeout(loadServices, 1000);
+    }
+
+    async function stopService(id) {
+      const result = await window.electronAPI.stopService(id);
+      console.log('Stop:', result);
+      setTimeout(loadServices, 1000);
+    }
+
+    async function restartService(id) {
+      const result = await window.electronAPI.restartService(id);
+      console.log('Restart:', result);
+      setTimeout(loadServices, 2000);
+    }
+
+    async function deleteService(id) {
+      if (confirm('Delete this service?')) {
+        const result = await window.electronAPI.deleteService(id);
+        console.log('Delete:', result);
+        loadServices();
+      }
+    }
+
+    // Load on startup
+    loadServices();
+    
+    // Auto-refresh every 3 seconds
+    setInterval(loadServices, 3000);
+  </script>
+</body>
+</html>
