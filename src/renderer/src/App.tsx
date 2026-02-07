@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Header } from './components/Header'
-import { ServiceList } from './components/ServiceList'
-import { AddServiceModal } from './components/AddServiceModal'
+import { Sidebar, type Page } from './components/Sidebar'
+import { Dashboard } from './pages/Dashboard'
+import { Services } from './pages/Services'
+import { Logs } from './pages/Logs'
+import { Settings } from './pages/Settings'
 import { useServices } from './hooks/useServices'
 
 function App() {
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [currentPage, setCurrentPage] = useState<Page>('dashboard')
   const {
     services,
     loading,
@@ -17,48 +19,56 @@ function App() {
     deleteService
   } = useServices()
 
-  const runningCount = services.filter((s) => s.status === 'running').length
-  const stoppedCount = services.filter((s) => s.status === 'stopped').length
-  const crashedCount = services.filter((s) => s.status === 'crashed').length
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'dashboard':
+        return (
+          <Dashboard
+            services={services}
+            onStart={startService}
+            onStop={stopService}
+            onRestart={restartService}
+            onDelete={deleteService}
+          />
+        )
+      case 'services':
+        return (
+          <Services
+            services={services}
+            loading={loading}
+            onRefresh={refresh}
+            onStart={startService}
+            onStop={stopService}
+            onRestart={restartService}
+            onDelete={deleteService}
+            onAdd={addService}
+          />
+        )
+      case 'logs':
+        return <Logs services={services} />
+      case 'settings':
+        return <Settings />
+    }
+  }
 
   return (
-    <div className="app">
-      <Header
-        onAddService={() => setIsModalOpen(true)}
-        onRefresh={refresh}
-        stats={{ running: runningCount, stopped: stoppedCount, crashed: crashedCount }}
-      />
-
+    <div className="app-layout">
+      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
       <main className="main-content">
-        <ServiceList
-          services={services}
-          loading={loading}
-          onStart={startService}
-          onStop={stopService}
-          onRestart={restartService}
-          onDelete={deleteService}
-        />
+        {renderPage()}
       </main>
 
-      <AddServiceModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmit={addService}
-      />
-
       <style>{`
-        .app {
-          min-height: 100vh;
+        .app-layout {
           display: flex;
-          flex-direction: column;
+          min-height: 100vh;
         }
 
         .main-content {
           flex: 1;
-          padding: 24px;
-          max-width: 1400px;
-          margin: 0 auto;
-          width: 100%;
+          padding: 32px;
+          overflow-y: auto;
+          max-height: 100vh;
         }
       `}</style>
     </div>
