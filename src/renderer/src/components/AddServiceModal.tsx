@@ -20,7 +20,11 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
 
   useEffect(() => {
     if (isOpen) {
-      setCwd('C:\\Projects')
+      window.electronAPI.getCwd().then((dir) => {
+        setCwd(dir)
+      }).catch(() => {
+        setCwd('')
+      })
     }
   }, [isOpen])
 

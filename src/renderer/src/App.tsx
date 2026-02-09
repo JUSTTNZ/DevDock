@@ -3,8 +3,10 @@ import { Sidebar, type Page } from './components/Sidebar'
 import { Dashboard } from './pages/Dashboard'
 import { Services } from './pages/Services'
 import { Logs } from './pages/Logs'
-import { Settings } from './pages/Settings'
+import { Settings, initTheme } from './pages/Settings'
 import { useServices } from './hooks/useServices'
+
+initTheme()
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard')

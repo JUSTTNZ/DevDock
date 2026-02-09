@@ -1,124 +1,63 @@
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Service, ServiceConfig } from '../../../shared/types'
 
-const MOCK_SERVICES: Service[] = [
-  {
-    id: 'service-1',
-    name: 'Backend API',
-    command: 'npm run dev',
-    cwd: 'C:\\Projects\\backend',
-    port: 3001,
-    status: 'running',
-    memory: '128 MB',
-    cpu: '2.4%',
-    uptime: '2h 15m',
-    autoRestart: true,
-    autoStart: true,
-    pid: 12345
-  },
-  {
-    id: 'service-2',
-    name: 'Frontend App',
-    command: 'npm start',
-    cwd: 'C:\\Projects\\frontend',
-    port: 3000,
-    status: 'running',
-    memory: '256 MB',
-    cpu: '5.1%',
-    uptime: '1h 42m',
-    autoRestart: false,
-    autoStart: true,
-    pid: 12346
-  },
-  {
-    id: 'service-3',
-    name: 'PostgreSQL',
-    command: 'pg_ctl start -D /data',
-    cwd: 'C:\\Program Files\\PostgreSQL',
-    port: 5432,
-    status: 'stopped',
-    memory: '0 MB',
-    cpu: '0%',
-    uptime: '0s',
-    autoRestart: true,
-    autoStart: false
-  },
-  {
-    id: 'service-4',
-    name: 'Redis Cache',
-    command: 'redis-server',
-    cwd: 'C:\\Redis',
-    port: 6379,
-    status: 'crashed',
-    memory: '0 MB',
-    cpu: '0%',
-    uptime: '0s',
-    autoRestart: true,
-    autoStart: true
-  },
-  {
-    id: 'service-5',
-    name: 'Worker Queue',
-    command: 'node worker.js',
-    cwd: 'C:\\Projects\\backend',
-    status: 'starting',
-    memory: '64 MB',
-    cpu: '1.2%',
-    uptime: '5s',
-    autoRestart: true,
-    autoStart: false
-  }
-]
+const POLL_INTERVAL = 2000
 
 export function useServices() {
-  const [services, setServices] = useState<Service[]>(MOCK_SERVICES)
-  const [loading] = useState(false)
+  const [services, setServices] = useState<Service[]>([])
+  const [loading, setLoading] = useState(true)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchServices = useCallback(async () => {}, [])
+  const fetchServices = useCallback(async () => {
+    try {
+      const data = await window.electronAPI.getServices()
+      setServices(data)
+    } catch (err) {
+      console.error('Failed to fetch services:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Initial fetch + polling
+  useEffect(() => {
+    fetchServices()
+    intervalRef.current = setInterval(fetchServices, POLL_INTERVAL)
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
+  }, [fetchServices])
 
   const startService = useCallback(async (id: string) => {
-    setServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: 'running' as const } : s))
-    )
-    return { success: true, message: 'Service started' }
-  }, [])
+    const result = await window.electronAPI.startService(id)
+    await fetchServices()
+    return result
+  }, [fetchServices])
 
   const stopService = useCallback(async (id: string) => {
-    setServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: 'stopped' as const } : s))
-    )
-    return { success: true, message: 'Service stopped' }
-  }, [])
+    const result = await window.electronAPI.stopService(id)
+    await fetchServices()
+    return result
+  }, [fetchServices])
 
   const restartService = useCallback(async (id: string) => {
-    setServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: 'starting' as const } : s))
-    )
-    setTimeout(() => {
-      setServices((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, status: 'running' as const } : s))
-      )
-    }, 1500)
-    return { success: true, message: 'Service restarted' }
-  }, [])
+    const result = await window.electronAPI.restartService(id)
+    // Fetch after a short delay since restart has a 1s gap
+    setTimeout(fetchServices, 1500)
+    return result
+  }, [fetchServices])
 
   const addService = useCallback(async (config: ServiceConfig) => {
-    const newService: Service = {
-      id: `service-${Date.now()}`,
-      ...config,
-      status: 'stopped',
-      memory: '0 MB',
-      cpu: '0%',
-      uptime: '0s'
-    }
-    setServices((prev) => [...prev, newService])
-    return { success: true, message: 'Service added' }
-  }, [])
+    const result = await window.electronAPI.addService(config)
+    await fetchServices()
+    return result
+  }, [fetchServices])
 
   const deleteService = useCallback(async (id: string) => {
-    setServices((prev) => prev.filter((s) => s.id !== id))
-    return { success: true, message: 'Service deleted' }
-  }, [])
+    const result = await window.electronAPI.deleteService(id)
+    await fetchServices()
+    return result
+  }, [fetchServices])
 
   return {
     services,

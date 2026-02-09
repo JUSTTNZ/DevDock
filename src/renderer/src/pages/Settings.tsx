@@ -1,5 +1,67 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Moon, Sun, User, CreditCard, Bell, Key } from 'lucide-react'
+
+const LIGHT_THEME: Record<string, string> = {
+  '--bg-primary': '#f5f5f5',
+  '--bg-secondary': '#ffffff',
+  '--bg-tertiary': '#e8e8e8',
+  '--bg-hover': '#ebebeb',
+  '--text-primary': '#111111',
+  '--text-secondary': '#555555',
+  '--text-muted': '#888888',
+  '--border': '#d4d4d4',
+  '--border-light': '#c0c0c0'
+}
+
+const DARK_THEME: Record<string, string> = {
+  '--bg-primary': '#0f0f0f',
+  '--bg-secondary': '#1a1a1a',
+  '--bg-tertiary': '#252525',
+  '--bg-hover': '#2a2a2a',
+  '--text-primary': '#ffffff',
+  '--text-secondary': '#a0a0a0',
+  '--text-muted': '#6b7280',
+  '--border': '#333333',
+  '--border-light': '#404040'
+}
+
+const ACCENT_COLORS = [
+  { value: '#3b82f6', hover: '#2563eb' },
+  { value: '#8b5cf6', hover: '#7c3aed' },
+  { value: '#10b981', hover: '#059669' },
+  { value: '#f59e0b', hover: '#d97706' },
+  { value: '#ef4444', hover: '#dc2626' },
+  { value: '#ec4899', hover: '#db2777' }
+]
+
+function applyTheme(mode: 'dark' | 'light') {
+  const vars = mode === 'light' ? LIGHT_THEME : DARK_THEME
+  const root = document.documentElement
+  for (const [key, val] of Object.entries(vars)) {
+    root.style.setProperty(key, val)
+  }
+}
+
+function applyAccent(color: string, hover: string) {
+  const root = document.documentElement
+  root.style.setProperty('--accent', color)
+  root.style.setProperty('--accent-hover', hover)
+}
+
+export function initTheme() {
+  try {
+    const savedTheme = localStorage.getItem('devdock-theme') as 'dark' | 'light' | null
+    if (savedTheme) applyTheme(savedTheme)
+
+    const savedAccent = localStorage.getItem('devdock-accent')
+    if (savedAccent) {
+      const match = ACCENT_COLORS.find((a) => a.value === savedAccent)
+      if (match) applyAccent(match.value, match.hover)
+    }
+  } catch {
+    // ignore
+  }
+}
 
 type SettingsTab = 'theme' | 'profile' | 'billing' | 'notifications' | 'api'
 
@@ -12,7 +74,42 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Moon }[] = [
 ]
 
 function ThemeSettings() {
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try { return (localStorage.getItem('devdock-theme') as 'dark' | 'light') || 'dark' } catch { return 'dark' }
+  })
+  const [accent, setAccent] = useState(() => {
+    try { return localStorage.getItem('devdock-accent') || '#3b82f6' } catch { return '#3b82f6' }
+  })
+
+  // Load saved settings from backend on mount
+  useEffect(() => {
+    window.electronAPI.getSettings().then((settings) => {
+      if (settings.theme) {
+        setTheme(settings.theme)
+        applyTheme(settings.theme)
+        try { localStorage.setItem('devdock-theme', settings.theme) } catch { /* */ }
+      }
+      if (settings.accentColor) {
+        setAccent(settings.accentColor)
+        const match = ACCENT_COLORS.find((a) => a.value === settings.accentColor)
+        if (match) applyAccent(match.value, match.hover)
+        try { localStorage.setItem('devdock-accent', settings.accentColor) } catch { /* */ }
+      }
+    }).catch(() => { /* use defaults */ })
+  }, [])
+
+  useEffect(() => {
+    applyTheme(theme)
+    try { localStorage.setItem('devdock-theme', theme) } catch { /* */ }
+    window.electronAPI.saveSettings({ theme }).catch(() => { /* */ })
+  }, [theme])
+
+  const handleAccent = (color: typeof ACCENT_COLORS[number]) => {
+    setAccent(color.value)
+    applyAccent(color.value, color.hover)
+    try { localStorage.setItem('devdock-accent', color.value) } catch { /* */ }
+    window.electronAPI.saveSettings({ accentColor: color.value }).catch(() => { /* */ })
+  }
 
   return (
     <div className="settings-section">
@@ -36,12 +133,13 @@ function ThemeSettings() {
 
       <h3 className="settings-section-title" style={{ marginTop: 28 }}>Accent Color</h3>
       <div className="accent-colors">
-        {['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'].map((color) => (
+        {ACCENT_COLORS.map((color) => (
           <div
-            key={color}
-            className="accent-swatch"
-            style={{ background: color }}
-            title={color}
+            key={color.value}
+            className={`accent-swatch ${accent === color.value ? 'selected' : ''}`}
+            style={{ background: color.value }}
+            title={color.value}
+            onClick={() => handleAccent(color)}
           />
         ))}
       </div>
@@ -87,6 +185,16 @@ function NotificationSettings() {
   const [emailAlerts, setEmailAlerts] = useState(true)
   const [crashAlerts, setCrashAlerts] = useState(true)
   const [weeklyReport, setWeeklyReport] = useState(false)
+
+  // Load notification prefs from backend
+  useEffect(() => {
+    window.electronAPI.getSettings().then((settings) => {
+      if (settings.showNotifications !== undefined) {
+        setEmailAlerts(settings.showNotifications)
+        setCrashAlerts(settings.showNotifications)
+      }
+    }).catch(() => { /* */ })
+  }, [])
 
   return (
     <div className="settings-section">
@@ -295,6 +403,11 @@ export function Settings() {
         }
 
         .accent-swatch:hover {
+          transform: scale(1.15);
+        }
+
+        .accent-swatch.selected {
+          border-color: var(--text-primary);
           transform: scale(1.15);
         }
 
