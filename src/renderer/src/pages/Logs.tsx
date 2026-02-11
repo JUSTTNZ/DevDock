@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { Trash2, Terminal, ArrowDown } from 'lucide-react'
 import type { Service } from '../../../shared/types'
 
 interface LogsProps {
@@ -11,137 +12,346 @@ interface LogEntry {
   message: string
 }
 
-const MOCK_LOGS: Record<string, LogEntry[]> = {
-  'service-1': [
-    { timestamp: '2025-01-15 10:23:01', level: 'INFO', message: 'Server started on port 3001' },
-    { timestamp: '2025-01-15 10:23:02', level: 'INFO', message: 'Connected to database' },
-    { timestamp: '2025-01-15 10:24:15', level: 'WARN', message: 'Slow query detected: GET /api/users took 1200ms' },
-    { timestamp: '2025-01-15 10:25:30', level: 'INFO', message: 'Request: POST /api/auth/login - 200 OK' },
-    { timestamp: '2025-01-15 10:26:00', level: 'ERROR', message: 'Failed to send email notification: SMTP timeout' },
-    { timestamp: '2025-01-15 10:27:12', level: 'INFO', message: 'Request: GET /api/services - 200 OK' },
-    { timestamp: '2025-01-15 10:28:45', level: 'INFO', message: 'Cache refreshed successfully' }
-  ],
-  'service-2': [
-    { timestamp: '2025-01-15 10:30:00', level: 'INFO', message: 'Webpack compiled successfully' },
-    { timestamp: '2025-01-15 10:30:01', level: 'INFO', message: 'Development server running at http://localhost:3000' },
-    { timestamp: '2025-01-15 10:31:22', level: 'WARN', message: 'Large bundle size: main.js is 2.4MB' },
-    { timestamp: '2025-01-15 10:32:10', level: 'INFO', message: 'Hot module replacement active' },
-    { timestamp: '2025-01-15 10:33:05', level: 'INFO', message: 'Recompiled in 340ms' }
-  ],
-  'service-3': [
-    { timestamp: '2025-01-15 09:00:00', level: 'INFO', message: 'PostgreSQL server starting' },
-    { timestamp: '2025-01-15 09:00:02', level: 'INFO', message: 'Listening on port 5432' },
-    { timestamp: '2025-01-15 09:15:30', level: 'WARN', message: 'Connection pool nearing limit: 45/50' },
-    { timestamp: '2025-01-15 09:20:00', level: 'ERROR', message: 'Too many connections: rejecting new connection' },
-    { timestamp: '2025-01-15 09:20:05', level: 'INFO', message: 'Server stopped by user' }
-  ],
-  'service-4': [
-    { timestamp: '2025-01-15 08:00:00', level: 'INFO', message: 'Redis server starting' },
-    { timestamp: '2025-01-15 08:00:01', level: 'ERROR', message: 'Fatal: Cannot bind to port 6379 - address already in use' },
-    { timestamp: '2025-01-15 08:00:02', level: 'ERROR', message: 'Server crashed with exit code 1' }
-  ],
-  'service-5': [
-    { timestamp: '2025-01-15 10:40:00', level: 'INFO', message: 'Worker queue starting...' },
-    { timestamp: '2025-01-15 10:40:01', level: 'INFO', message: 'Connected to message broker' },
-    { timestamp: '2025-01-15 10:40:02', level: 'WARN', message: 'Queue backlog: 142 pending jobs' }
-  ]
+const LEVEL_COLORS: Record<string, string> = {
+  INFO: '#60a5fa',
+  WARN: '#fbbf24',
+  ERROR: '#f87171'
 }
 
-const LEVEL_COLORS: Record<string, string> = {
-  INFO: 'var(--accent)',
-  WARN: 'var(--warning)',
-  ERROR: 'var(--danger)'
+const LEVEL_BG: Record<string, string> = {
+  INFO: 'rgba(96, 165, 250, 0.08)',
+  WARN: 'rgba(251, 191, 36, 0.08)',
+  ERROR: 'rgba(248, 113, 113, 0.08)'
 }
+
+const POLL_INTERVAL = 2000
 
 export function Logs({ services }: LogsProps) {
   const [activeTab, setActiveTab] = useState(services[0]?.id || '')
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [autoScroll, setAutoScroll] = useState(true)
+  const [filter, setFilter] = useState<'ALL' | 'INFO' | 'WARN' | 'ERROR'>('ALL')
+  const logsEndRef = useRef<HTMLDivElement>(null)
 
-  const logs = MOCK_LOGS[activeTab] || []
+  useEffect(() => {
+    if (services.length > 0 && !services.find((s) => s.id === activeTab)) {
+      setActiveTab(services[0].id)
+    }
+  }, [services, activeTab])
+
+  useEffect(() => {
+    if (!activeTab) return
+
+    const fetchLogs = async () => {
+      try {
+        const data = await window.electronAPI.getLogs(activeTab)
+        setLogs(data)
+      } catch {
+        setLogs([])
+      }
+    }
+
+    fetchLogs()
+    const interval = setInterval(fetchLogs, POLL_INTERVAL)
+    return () => clearInterval(interval)
+  }, [activeTab])
+
+  useEffect(() => {
+    if (autoScroll && logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [logs, autoScroll])
+
+  const handleClear = async () => {
+    if (activeTab) {
+      await window.electronAPI.clearLogs(activeTab)
+      setLogs([])
+    }
+  }
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+    setAutoScroll(atBottom)
+  }
+
+  const activeService = services.find((s) => s.id === activeTab)
+  const filteredLogs = filter === 'ALL' ? logs : logs.filter((l) => l.level === filter)
+
+  const counts = { INFO: 0, WARN: 0, ERROR: 0 }
+  for (const l of logs) counts[l.level]++
 
   return (
     <div className="logs-page">
-      <div className="page-header">
-        <h2 className="page-title">Logs</h2>
-        <p className="page-subtitle">View service logs and output</p>
-      </div>
-
-      <div className="logs-tabs">
-        {services.map((svc) => (
-          <button
-            key={svc.id}
-            className={`log-tab ${activeTab === svc.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(svc.id)}
-          >
-            {svc.name}
-          </button>
-        ))}
-      </div>
-
-      <div className="logs-container">
-        {logs.length === 0 ? (
-          <div className="logs-empty">No logs available for this service</div>
-        ) : (
-          logs.map((entry, i) => (
-            <div key={i} className="log-entry">
-              <span className="log-timestamp">{entry.timestamp}</span>
-              <span className="log-level" style={{ color: LEVEL_COLORS[entry.level] }}>
-                [{entry.level}]
+      <div className="logs-header">
+        <div>
+          <h2 className="logs-title">Logs</h2>
+          <p className="logs-sub">
+            Real-time service output
+            {activeService && (
+              <span className="logs-active-badge">
+                <span className="logs-active-dot" style={{
+                  background: activeService.status === 'running' ? 'var(--success)' : 'var(--text-muted)'
+                }} />
+                {activeService.name}
               </span>
-              <span className="log-message">{entry.message}</span>
-            </div>
-          ))
-        )}
+            )}
+          </p>
+        </div>
+        <div className="logs-header-actions">
+          {logs.length > 0 && (
+            <span className="logs-count">{logs.length} entries</span>
+          )}
+          {!autoScroll && (
+            <button className="logs-scroll-btn" onClick={() => {
+              setAutoScroll(true)
+              logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+            }}>
+              <ArrowDown size={14} />
+              Scroll to bottom
+            </button>
+          )}
+          {activeTab && logs.length > 0 && (
+            <button className="logs-clear-btn" onClick={handleClear} title="Clear logs">
+              <Trash2 size={14} />
+              Clear
+            </button>
+          )}
+        </div>
       </div>
+
+      {services.length === 0 ? (
+        <div className="logs-empty-full">
+          <Terminal size={40} strokeWidth={1} />
+          <p>No services configured yet</p>
+        </div>
+      ) : (
+        <>
+          <div className="logs-tabs-row">
+            <div className="logs-tabs">
+              {services.map((svc) => (
+                <button
+                  key={svc.id}
+                  className={`logs-tab ${activeTab === svc.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(svc.id)}
+                >
+                  <span className="logs-tab-dot" style={{
+                    background: svc.status === 'running'
+                      ? 'var(--success)'
+                      : svc.status === 'crashed'
+                        ? 'var(--danger)'
+                        : 'var(--text-muted)',
+                    boxShadow: svc.status === 'running'
+                      ? '0 0 6px rgba(34,197,94,0.4)'
+                      : 'none'
+                  }} />
+                  {svc.name}
+                </button>
+              ))}
+            </div>
+            <div className="logs-filters">
+              {(['ALL', 'INFO', 'WARN', 'ERROR'] as const).map((f) => (
+                <button
+                  key={f}
+                  className={`logs-filter ${filter === f ? 'active' : ''}`}
+                  onClick={() => setFilter(f)}
+                  style={filter === f && f !== 'ALL' ? { color: LEVEL_COLORS[f], borderColor: LEVEL_COLORS[f] } : {}}
+                >
+                  {f}
+                  {f !== 'ALL' && <span className="logs-filter-count">{counts[f]}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="logs-container" onScroll={handleScroll}>
+            {filteredLogs.length === 0 ? (
+              <div className="logs-empty">
+                <Terminal size={24} strokeWidth={1} />
+                <span>No logs yet. Start the service to see output.</span>
+              </div>
+            ) : (
+              filteredLogs.map((entry, i) => (
+                <div
+                  key={i}
+                  className="log-entry"
+                  style={{ background: LEVEL_BG[entry.level] }}
+                >
+                  <span className="log-ts">{entry.timestamp}</span>
+                  <span className="log-lvl" style={{ color: LEVEL_COLORS[entry.level] }}>
+                    {entry.level}
+                  </span>
+                  <span className="log-msg">{entry.message}</span>
+                </div>
+              ))
+            )}
+            <div ref={logsEndRef} />
+          </div>
+        </>
+      )}
 
       <style>{`
-        .logs-page {
-          animation: fadeIn 0.3s ease-out;
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
-        .page-header {
-          margin-bottom: 24px;
-        }
+        .logs-page { animation: fadeIn 0.3s ease-out; }
 
-        .page-title {
-          font-size: 24px;
+        .logs-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          margin-bottom: 20px;
+          animation: slideDown 0.4s ease-out;
+        }
+        .logs-title {
+          font-size: 22px;
           font-weight: 700;
           color: var(--text-primary);
-          margin: 0 0 4px 0;
+          margin: 0 0 2px 0;
         }
-
-        .page-subtitle {
-          font-size: 14px;
+        .logs-sub {
+          font-size: 13px;
           color: var(--text-muted);
           margin: 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .logs-active-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          padding: 2px 10px 2px 6px;
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .logs-active-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
         }
 
-        .logs-tabs {
+        .logs-header-actions {
           display: flex;
-          gap: 4px;
+          align-items: center;
+          gap: 8px;
+        }
+        .logs-count {
+          font-size: 12px;
+          color: var(--text-muted);
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          padding: 4px 12px;
+        }
+        .logs-scroll-btn {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          padding: 6px 12px;
+          border-radius: 8px;
+          background: rgba(59, 130, 246, 0.1);
+          color: var(--accent);
+          border: 1px solid rgba(59, 130, 246, 0.3);
+          font-size: 12px;
+          font-weight: 500;
+        }
+        .logs-clear-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: 8px;
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+          border: 1px solid var(--border);
+          font-size: 12px;
+          font-weight: 500;
+          transition: all 0.2s;
+        }
+        .logs-clear-btn:hover {
+          background: rgba(239, 68, 68, 0.1);
+          border-color: var(--danger);
+          color: var(--danger);
+        }
+
+        .logs-tabs-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
           border-bottom: 1px solid var(--border);
           margin-bottom: 0;
+          gap: 12px;
+        }
+        .logs-tabs {
+          display: flex;
+          gap: 2px;
           overflow-x: auto;
         }
-
-        .log-tab {
-          padding: 10px 20px;
+        .logs-tab {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          padding: 10px 16px;
           background: transparent;
           color: var(--text-secondary);
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 500;
           border-bottom: 2px solid transparent;
           border-radius: 0;
           white-space: nowrap;
+          transition: all 0.2s;
         }
-
-        .log-tab:hover {
+        .logs-tab:hover {
           color: var(--text-primary);
           background: var(--bg-hover);
         }
-
-        .log-tab.active {
+        .logs-tab.active {
           color: var(--accent);
           border-bottom-color: var(--accent);
+        }
+        .logs-tab-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .logs-filters {
+          display: flex;
+          gap: 4px;
+          padding-right: 4px;
+        }
+        .logs-filter {
+          padding: 4px 10px;
+          border-radius: 6px;
+          background: transparent;
+          color: var(--text-muted);
+          font-size: 11px;
+          font-weight: 600;
+          border: 1px solid transparent;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .logs-filter:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+        .logs-filter.active {
+          background: var(--bg-tertiary);
+          border-color: var(--border);
+          color: var(--text-primary);
+        }
+        .logs-filter-count {
+          font-size: 10px;
+          opacity: 0.7;
         }
 
         .logs-container {
@@ -149,42 +359,61 @@ export function Logs({ services }: LogsProps) {
           border: 1px solid var(--border);
           border-top: none;
           border-radius: 0 0 12px 12px;
-          padding: 16px;
-          max-height: 600px;
+          padding: 8px;
+          max-height: calc(100vh - 280px);
           overflow-y: auto;
           font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-          font-size: 13px;
-          line-height: 1.6;
+          font-size: 12px;
+          line-height: 1.7;
         }
 
         .logs-empty {
           color: var(--text-muted);
           text-align: center;
-          padding: 40px 0;
+          padding: 60px 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          font-size: 13px;
         }
+        .logs-empty-full {
+          color: var(--text-muted);
+          text-align: center;
+          padding: 80px 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+        }
+        .logs-empty-full p { margin: 0; font-size: 14px; }
 
         .log-entry {
           display: flex;
-          gap: 12px;
-          padding: 2px 0;
+          gap: 10px;
+          padding: 3px 8px;
+          border-radius: 4px;
+          transition: background 0.15s;
         }
-
         .log-entry:hover {
-          background: var(--bg-hover);
+          background: var(--bg-hover) !important;
         }
-
-        .log-timestamp {
+        .log-ts {
           color: var(--text-muted);
           flex-shrink: 0;
+          font-size: 11px;
+          opacity: 0.7;
         }
-
-        .log-level {
-          font-weight: 600;
+        .log-lvl {
+          font-weight: 700;
           flex-shrink: 0;
-          min-width: 56px;
+          min-width: 44px;
+          font-size: 11px;
         }
-
-        .log-message {
+        .log-msg {
           color: var(--text-primary);
           word-break: break-word;
         }

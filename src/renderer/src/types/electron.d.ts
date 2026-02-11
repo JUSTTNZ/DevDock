@@ -9,6 +9,9 @@ export interface ElectronAPI {
   updateService: (id: string, updates: Partial<ServiceConfig>) => Promise<{ success: boolean; message?: string }>
   deleteService: (id: string) => Promise<{ success: boolean; message?: string }>
   getCwd: () => Promise<string>
+  browseFolder: () => Promise<string | null>
+  getLogs: (serviceId: string) => Promise<{ timestamp: string; level: 'INFO' | 'WARN' | 'ERROR'; message: string }[]>
+  clearLogs: (serviceId: string) => Promise<{ success: boolean }>
   getSettings: () => Promise<AppSettings>
   saveSettings: (settings: Partial<AppSettings>) => Promise<{ success: boolean; message?: string }>
   onServiceUpdate: (callback: (data: any) => void) => () => void

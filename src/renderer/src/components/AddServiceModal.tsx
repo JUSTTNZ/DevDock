@@ -39,25 +39,29 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
 
     setLoading(true)
 
-    const config: ServiceConfig = {
-      name: name.trim(),
-      command: command.trim(),
-      cwd: cwd.trim(),
-      port: port ? parseInt(port, 10) : undefined,
-      autoStart,
-      autoRestart
+    try {
+      const config: ServiceConfig = {
+        name: name.trim(),
+        command: command.trim(),
+        cwd: cwd.trim(),
+        port: port ? parseInt(port, 10) : undefined,
+        autoStart,
+        autoRestart
+      }
+
+      const result = await onSubmit(config)
+
+      if (result.success) {
+        resetForm()
+        onClose()
+      } else {
+        setError(result.message || 'Failed to add service')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add service')
+    } finally {
+      setLoading(false)
     }
-
-    const result = await onSubmit(config)
-
-    if (result.success) {
-      resetForm()
-      onClose()
-    } else {
-      setError(result.message || 'Failed to add service')
-    }
-
-    setLoading(false)
   }
 
   const resetForm = () => {
@@ -82,13 +86,13 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Add New Service</h2>
-          <button className="close-btn" onClick={handleClose}>
-            <X size={20} />
+          <button className="modal-close" onClick={handleClose}>
+            <X size={18} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
+          <div className="modal-form-group">
             <label htmlFor="name">Service Name</label>
             <input
               id="name"
@@ -100,7 +104,7 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
             />
           </div>
 
-          <div className="form-group">
+          <div className="modal-form-group">
             <label htmlFor="command">Command</label>
             <input
               id="command"
@@ -111,9 +115,9 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
             />
           </div>
 
-          <div className="form-group">
+          <div className="modal-form-group">
             <label htmlFor="cwd">Working Directory</label>
-            <div className="input-with-icon">
+            <div className="modal-input-row">
               <input
                 id="cwd"
                 type="text"
@@ -123,19 +127,19 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
               />
               <button
                 type="button"
-                className="browse-btn"
+                className="modal-browse"
                 onClick={async () => {
                   const folder = await window.electronAPI.browseFolder()
                   if (folder) setCwd(folder)
                 }}
                 title="Browse for folder"
               >
-                <FolderOpen size={18} />
+                <FolderOpen size={16} />
               </button>
             </div>
           </div>
 
-          <div className="form-group">
+          <div className="modal-form-group">
             <label htmlFor="port">Port (optional)</label>
             <input
               id="port"
@@ -146,8 +150,8 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
             />
           </div>
 
-          <div className="form-row">
-            <label className="checkbox-label">
+          <div className="modal-checks">
+            <label className="modal-check">
               <input
                 type="checkbox"
                 checked={autoStart}
@@ -156,7 +160,7 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
               <span>Auto-start on launch</span>
             </label>
 
-            <label className="checkbox-label">
+            <label className="modal-check">
               <input
                 type="checkbox"
                 checked={autoRestart}
@@ -166,13 +170,13 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
             </label>
           </div>
 
-          {error && <div className="error-message">{error}</div>}
+          {error && <div className="modal-error">{error}</div>}
 
           <div className="modal-actions">
-            <button type="button" className="btn-cancel" onClick={handleClose}>
+            <button type="button" className="modal-btn-cancel" onClick={handleClose}>
               Cancel
             </button>
-            <button type="submit" className="btn-submit" disabled={loading}>
+            <button type="submit" className="modal-btn-submit" disabled={loading}>
               {loading ? 'Adding...' : 'Add Service'}
             </button>
           </div>
@@ -180,15 +184,25 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
       </div>
 
       <style>{`
+        @keyframes modalFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes modalSlideUp {
+          from { opacity: 0; transform: translateY(20px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
         .modal-overlay {
           position: fixed;
           inset: 0;
-          background: rgba(0, 0, 0, 0.7);
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(4px);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 1000;
-          animation: fadeIn 0.2s ease-out;
+          animation: modalFadeIn 0.2s ease-out;
         }
 
         .modal {
@@ -196,9 +210,10 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
           border: 1px solid var(--border);
           border-radius: 16px;
           width: 100%;
-          max-width: 500px;
+          max-width: 480px;
           margin: 20px;
-          animation: fadeIn 0.3s ease-out;
+          animation: modalSlideUp 0.3s ease-out;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
         }
 
         .modal-header {
@@ -208,21 +223,20 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
           padding: 20px 24px;
           border-bottom: 1px solid var(--border);
         }
-
         .modal-header h2 {
-          font-size: 18px;
+          font-size: 17px;
           font-weight: 600;
           margin: 0;
+          color: var(--text-primary);
         }
-
-        .close-btn {
+        .modal-close {
           background: none;
           color: var(--text-muted);
-          padding: 4px;
-          border-radius: 6px;
+          padding: 6px;
+          border-radius: 8px;
+          transition: all 0.2s;
         }
-
-        .close-btn:hover {
+        .modal-close:hover {
           background: var(--bg-tertiary);
           color: var(--text-primary);
         }
@@ -231,31 +245,27 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
           padding: 24px;
         }
 
-        .form-group {
-          margin-bottom: 20px;
+        .modal-form-group {
+          margin-bottom: 18px;
         }
-
-        .form-group label {
+        .modal-form-group label {
           display: block;
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 500;
           color: var(--text-secondary);
-          margin-bottom: 8px;
+          margin-bottom: 6px;
         }
-
-        .form-group input {
+        .modal-form-group input {
           width: 100%;
         }
 
-        .input-with-icon {
+        .modal-input-row {
           position: relative;
         }
-
-        .input-with-icon input {
+        .modal-input-row input {
           padding-right: 40px;
         }
-
-        .browse-btn {
+        .modal-browse {
           position: absolute;
           right: 4px;
           top: 50%;
@@ -268,76 +278,78 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
           cursor: pointer;
           display: flex;
           align-items: center;
+          transition: all 0.2s;
         }
-
-        .browse-btn:hover {
+        .modal-browse:hover {
           background: var(--bg-hover);
           color: var(--accent);
           border-color: var(--accent);
         }
 
-        .form-row {
+        .modal-checks {
           display: flex;
-          gap: 24px;
-          margin-bottom: 20px;
+          gap: 20px;
+          margin-bottom: 18px;
         }
-
-        .checkbox-label {
+        .modal-check {
           display: flex;
           align-items: center;
-          gap: 8px;
-          font-size: 14px;
+          gap: 7px;
+          font-size: 13px;
           color: var(--text-secondary);
           cursor: pointer;
         }
-
-        .checkbox-label input {
+        .modal-check input {
           width: 16px;
           height: 16px;
           cursor: pointer;
+          accent-color: var(--accent);
         }
 
-        .error-message {
+        .modal-error {
           background: rgba(239, 68, 68, 0.1);
-          border: 1px solid var(--danger);
-          color: var(--danger);
-          padding: 12px;
-          border-radius: 8px;
-          font-size: 14px;
-          margin-bottom: 20px;
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          color: #f87171;
+          padding: 10px 14px;
+          border-radius: 10px;
+          font-size: 13px;
+          margin-bottom: 18px;
         }
 
         .modal-actions {
           display: flex;
-          gap: 12px;
+          gap: 10px;
           justify-content: flex-end;
         }
-
-        .btn-cancel,
-        .btn-submit {
-          padding: 10px 20px;
-          border-radius: 8px;
+        .modal-btn-cancel,
+        .modal-btn-submit {
+          padding: 9px 20px;
+          border-radius: 10px;
           font-weight: 500;
+          font-size: 13px;
+          transition: all 0.2s;
         }
-
-        .btn-cancel {
+        .modal-btn-cancel {
           background: var(--bg-tertiary);
           color: var(--text-secondary);
           border: 1px solid var(--border);
         }
-
-        .btn-cancel:hover {
+        .modal-btn-cancel:hover {
           background: var(--bg-hover);
           color: var(--text-primary);
         }
-
-        .btn-submit {
+        .modal-btn-submit {
           background: var(--accent);
           color: white;
+          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
         }
-
-        .btn-submit:hover:not(:disabled) {
+        .modal-btn-submit:hover:not(:disabled) {
           background: var(--accent-hover);
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+        }
+        .modal-btn-submit:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
       `}</style>
     </div>

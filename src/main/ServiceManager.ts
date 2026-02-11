@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
-import { existsSync, unlinkSync } from 'fs';
+import { existsSync, unlinkSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
+import { createServer } from 'net';
 import pidtree from 'pidtree';
 import pidusage from 'pidusage';
 import { Service } from '../shared/types';
@@ -14,7 +15,31 @@ export interface LogEntry {
 
 const MAX_LOGS_PER_SERVICE = 500;
 const MAX_AUTO_RESTARTS = 3;
-const RESTART_WINDOW_MS = 60_000; // reset crash count after 1 minute of stable running
+const RESTART_WINDOW_MS = 60_000;
+
+// Check if a port is free by trying to listen on it briefly
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once('error', () => resolve(false));
+    server.once('listening', () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, '127.0.0.1');
+  });
+}
+
+// Find the next free port starting from the given port
+async function findFreePort(startPort: number): Promise<number> {
+  let port = startPort;
+  const maxAttempts = 50;
+  for (let i = 0; i < maxAttempts; i++) {
+    if (await isPortFree(port)) return port;
+    port++;
+  }
+  // Fallback: let the OS pick
+  return 0;
+}
 
 export class ServiceManager {
   private configManager: ConfigManager;
@@ -23,6 +48,7 @@ export class ServiceManager {
   private logs: Map<string, LogEntry[]>;
   private crashCounts: Map<string, { count: number; firstCrash: number }>;
   private manuallyStopped: Set<string>;
+  private activePorts: Map<string, number>; // serviceId -> actual port in use
 
   constructor(configManager: ConfigManager) {
     this.configManager = configManager;
@@ -31,9 +57,10 @@ export class ServiceManager {
     this.logs = new Map();
     this.crashCounts = new Map();
     this.manuallyStopped = new Set();
+    this.activePorts = new Map();
   }
 
-  startService(serviceId: string): boolean {
+  async startService(serviceId: string): Promise<boolean> {
     const service = this.configManager.getService(serviceId);
     if (!service) {
       console.error(`Service ${serviceId} not found`);
@@ -46,41 +73,70 @@ export class ServiceManager {
     }
 
     try {
-      // Update status to starting
       service.status = 'starting';
       this.manuallyStopped.delete(serviceId);
 
-      // Clean up stale Next.js dev lock file if present
+      // Clean up stale lock files
       this.cleanupStaleLockFiles(service);
 
-      // Spawn the process
+      // Resolve port conflicts
+      let assignedPort = service.port;
+      const env: Record<string, string> = { ...process.env } as Record<string, string>;
+
+      if (service.port) {
+        const portConflict = await this.checkPortConflict(serviceId, service.port);
+
+        if (portConflict) {
+          // Port is in use — find a free one
+          const freePort = await findFreePort(service.port + 1);
+          if (freePort > 0) {
+            this.handleLog(serviceId, 'WARN',
+              `⚠ Port ${service.port} is already in use${portConflict.owner ? ` by "${portConflict.owner}"` : ''}. Switching to port ${freePort}.`);
+            assignedPort = freePort;
+            // Set PORT env var — most frameworks (Next.js, React, Express, Vite) respect this
+            env['PORT'] = String(freePort);
+          } else {
+            this.handleLog(serviceId, 'WARN',
+              `⚠ Port ${service.port} is in use and no free port found nearby. The service may pick its own port.`);
+          }
+        }
+      }
+
+      // Track the port this service is actually using
+      if (assignedPort) {
+        this.activePorts.set(serviceId, assignedPort);
+      }
+
+      // Update the service port to reflect what's actually being used
+      if (assignedPort && assignedPort !== service.port) {
+        service.port = assignedPort;
+        this.configManager.updateService(serviceId, { port: assignedPort });
+      }
+
+      // Spawn the process with the (possibly updated) environment
       const childProcess = spawn(service.command, {
         cwd: service.cwd,
         shell: true,
-        detached: false
+        detached: false,
+        env
       });
 
-      // Store process
       this.processes.set(serviceId, childProcess);
       this.startTimes.set(serviceId, Date.now());
       service.pid = childProcess.pid;
 
-      // Handle stdout
       childProcess.stdout?.on('data', (data: Buffer) => {
         this.handleLog(serviceId, 'INFO', data.toString());
       });
 
-      // Handle stderr
       childProcess.stderr?.on('data', (data: Buffer) => {
         this.handleLog(serviceId, 'ERROR', data.toString());
       });
 
-      // Handle process exit
       childProcess.on('exit', (code) => {
         this.handleExit(serviceId, code);
       });
 
-      // Handle errors
       childProcess.on('error', (error) => {
         console.error(`Error starting service ${serviceId}:`, error);
         service.status = 'crashed';
@@ -90,7 +146,7 @@ export class ServiceManager {
       setTimeout(() => {
         if (childProcess.killed === false && childProcess.exitCode === null) {
           service.status = 'running';
-          console.log(`Service ${serviceId} started successfully`);
+          console.log(`Service ${serviceId} started successfully on port ${assignedPort || 'auto'}`);
         }
       }, 1000);
 
@@ -102,13 +158,34 @@ export class ServiceManager {
     }
   }
 
+  // Check if a port conflicts with another running service or any system process
+  private async checkPortConflict(serviceId: string, port: number): Promise<{ inUse: boolean; owner?: string } | null> {
+    // First check: is another one of our managed services using this port?
+    for (const [otherId, otherPort] of this.activePorts) {
+      if (otherId !== serviceId && otherPort === port) {
+        const otherService = this.configManager.getService(otherId);
+        if (otherService && (otherService.status === 'running' || otherService.status === 'starting')) {
+          return { inUse: true, owner: otherService.name };
+        }
+      }
+    }
+
+    // Second check: is anything else on the system using this port?
+    const free = await isPortFree(port);
+    if (!free) {
+      return { inUse: true };
+    }
+
+    return null;
+  }
+
   stopService(serviceId: string): boolean {
     const service = this.configManager.getService(serviceId);
     if (!service) return false;
 
-    // Mark as manually stopped so auto-restart doesn't kick in
     this.manuallyStopped.add(serviceId);
     this.crashCounts.delete(serviceId);
+    this.activePorts.delete(serviceId);
 
     const childProcess = this.processes.get(serviceId);
     if (!childProcess) {
@@ -117,13 +194,10 @@ export class ServiceManager {
     }
 
     try {
-      // Kill the process
       if (childProcess.pid) {
-        // On Windows, use taskkill to kill process tree
         if (process.platform === 'win32') {
           spawn('taskkill', ['/pid', childProcess.pid.toString(), '/T', '/F']);
         } else {
-          // On Unix, kill process group
           childProcess.kill('SIGTERM');
         }
       }
@@ -143,22 +217,64 @@ export class ServiceManager {
 
   restartService(serviceId: string): boolean {
     this.stopService(serviceId);
-    // Wait a bit before restarting
+    const delay = process.platform === 'win32' ? 2500 : 1000;
     setTimeout(() => {
       this.startService(serviceId);
-    }, 1000);
+    }, delay);
     return true;
   }
 
   private cleanupStaleLockFiles(service: Service): void {
-    const lockPath = join(service.cwd, '.next', 'dev', 'lock');
-    if (existsSync(lockPath)) {
-      try {
-        unlinkSync(lockPath);
-        this.handleLog(service.id, 'WARN', 'Removed stale .next/dev/lock file');
-      } catch {
-        // Lock file may be held by a running process — leave it
+    const lockPaths = [
+      join(service.cwd, '.next', 'dev', 'lock'),
+      join(service.cwd, '.next', 'lockfile'),
+      join(service.cwd, '.next', 'build-lock'),
+    ];
+
+    for (const lockPath of lockPaths) {
+      if (existsSync(lockPath)) {
+        try {
+          unlinkSync(lockPath);
+          this.handleLog(service.id, 'WARN', `Removed stale lock: ${lockPath}`);
+        } catch {
+          try {
+            rmSync(lockPath, { force: true });
+            this.handleLog(service.id, 'WARN', `Force-removed lock: ${lockPath}`);
+          } catch { /* */ }
+        }
       }
+    }
+
+    const nextDir = join(service.cwd, '.next');
+    if (existsSync(nextDir)) {
+      try {
+        const entries = readdirSync(nextDir);
+        for (const entry of entries) {
+          if (entry.endsWith('.lock') || entry === 'lock') {
+            const p = join(nextDir, entry);
+            try {
+              rmSync(p, { force: true });
+              this.handleLog(service.id, 'WARN', `Removed lock file: .next/${entry}`);
+            } catch { /* */ }
+          }
+        }
+      } catch { /* */ }
+    }
+
+    const devDir = join(service.cwd, '.next', 'dev');
+    if (existsSync(devDir)) {
+      try {
+        const entries = readdirSync(devDir);
+        for (const entry of entries) {
+          if (entry.endsWith('.lock') || entry === 'lock') {
+            const p = join(devDir, entry);
+            try {
+              rmSync(p, { force: true });
+              this.handleLog(service.id, 'WARN', `Removed lock file: .next/dev/${entry}`);
+            } catch { /* */ }
+          }
+        }
+      } catch { /* */ }
     }
   }
 
@@ -176,7 +292,6 @@ export class ServiceManager {
 
     entries.push({ timestamp, level, message: trimmed });
 
-    // Cap stored logs
     if (entries.length > MAX_LOGS_PER_SERVICE) {
       entries.splice(0, entries.length - MAX_LOGS_PER_SERVICE);
     }
@@ -198,8 +313,8 @@ export class ServiceManager {
 
     this.processes.delete(serviceId);
     this.startTimes.delete(serviceId);
+    this.activePorts.delete(serviceId);
 
-    // If manually stopped, don't auto-restart
     if (this.manuallyStopped.has(serviceId)) {
       service.status = 'stopped';
       console.log(`Service ${serviceId} stopped by user`);
@@ -207,21 +322,17 @@ export class ServiceManager {
     }
 
     if (code === 0) {
-      // Normal exit
       service.status = 'stopped';
       console.log(`Service ${serviceId} exited normally`);
     } else {
-      // Crashed
       service.status = 'crashed';
       console.log(`Service ${serviceId} crashed with code ${code}`);
 
-      // Auto-restart if enabled, with retry limit
       if (service.autoRestart) {
         const now = Date.now();
         let crashInfo = this.crashCounts.get(serviceId);
 
         if (!crashInfo || (now - crashInfo.firstCrash > RESTART_WINDOW_MS)) {
-          // First crash or window expired — reset
           crashInfo = { count: 1, firstCrash: now };
         } else {
           crashInfo.count++;
@@ -229,7 +340,7 @@ export class ServiceManager {
         this.crashCounts.set(serviceId, crashInfo);
 
         if (crashInfo.count <= MAX_AUTO_RESTARTS) {
-          const delay = crashInfo.count * 3000; // 3s, 6s, 9s backoff
+          const delay = crashInfo.count * 5000;
           console.log(`Auto-restarting service ${serviceId} (attempt ${crashInfo.count}/${MAX_AUTO_RESTARTS}) in ${delay / 1000}s...`);
           this.handleLog(serviceId, 'WARN',
             `Auto-restarting (attempt ${crashInfo.count}/${MAX_AUTO_RESTARTS}) in ${delay / 1000}s...`);
@@ -245,7 +356,6 @@ export class ServiceManager {
     }
   }
 
-  // Get service stats
   getServiceUptime(serviceId: string): string {
     const startTime = this.startTimes.get(serviceId);
     if (!startTime) return '0s';
@@ -260,18 +370,15 @@ export class ServiceManager {
     return `${seconds}s`;
   }
 
-  // Update live metrics on all services
   async updateServiceStats(): Promise<void> {
     const services = this.configManager.getAllServices();
     for (const service of services) {
-      // Always update uptime from start times
       if (service.status === 'running' || service.status === 'starting') {
         service.uptime = this.getServiceUptime(service.id);
       } else {
         service.uptime = '0s';
       }
 
-      // Get CPU/memory from pidusage across the entire process tree
       const proc = this.processes.get(service.id);
       if (proc && proc.pid && service.status === 'running') {
         try {
@@ -291,7 +398,6 @@ export class ServiceManager {
             : `${Math.round(memMB)} MB`;
           service.cpu = `${totalCpu.toFixed(1)}%`;
         } catch {
-          // Process may have just exited
           service.memory = '0 MB';
           service.cpu = '0%';
         }
@@ -302,7 +408,6 @@ export class ServiceManager {
     }
   }
 
-  // Stop all services on app quit
   stopAll(): void {
     const services = this.configManager.getAllServices();
     services.forEach(service => {

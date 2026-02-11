@@ -21,11 +21,13 @@ export function ServiceList({
 }: ServiceListProps) {
   if (loading) {
     return (
-      <div className="loading-state">
-        <Loader2 className="animate-spin" size={40} />
+      <div className="svc-loading">
+        <div className="svc-loading-spinner">
+          <Loader2 size={36} />
+        </div>
         <p>Loading services...</p>
         <style>{`
-          .loading-state {
+          .svc-loading {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -33,6 +35,13 @@ export function ServiceList({
             gap: 16px;
             padding: 80px 20px;
             color: var(--text-muted);
+          }
+          .svc-loading-spinner {
+            animation: spin 1s linear infinite;
+            color: var(--accent);
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
           }
         `}</style>
       </div>
@@ -41,30 +50,47 @@ export function ServiceList({
 
   if (services.length === 0) {
     return (
-      <div className="empty-state">
-        <ServerOff size={64} strokeWidth={1} />
+      <div className="svc-empty">
+        <div className="svc-empty-icon">
+          <ServerOff size={56} strokeWidth={1} />
+        </div>
         <h2>No services yet</h2>
         <p>Click "Add Service" to create your first service</p>
         <style>{`
-          .empty-state {
+          @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+          }
+          .svc-empty {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 16px;
+            gap: 12px;
             padding: 80px 20px;
             color: var(--text-muted);
             text-align: center;
+            animation: fadeInScale 0.4s ease-out;
           }
-
-          .empty-state h2 {
-            font-size: 20px;
+          .svc-empty-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 4px;
+          }
+          .svc-empty h2 {
+            font-size: 18px;
             color: var(--text-secondary);
             margin: 0;
           }
-
-          .empty-state p {
+          .svc-empty p {
             margin: 0;
+            font-size: 14px;
           }
         `}</style>
       </div>
@@ -72,33 +98,32 @@ export function ServiceList({
   }
 
   return (
-    <div className="service-list">
-      <div className="service-grid">
-        {services.map((service) => (
-          <ServiceCard
-            key={service.id}
-            service={service}
-            onStart={onStart}
-            onStop={onStop}
-            onRestart={onRestart}
-            onDelete={onDelete}
-          />
+    <div className="svc-list">
+      <div className="svc-grid">
+        {services.map((service, i) => (
+          <div key={service.id} style={{ animationDelay: `${i * 0.06}s` }}>
+            <ServiceCard
+              service={service}
+              onStart={onStart}
+              onStop={onStop}
+              onRestart={onRestart}
+              onDelete={onDelete}
+            />
+          </div>
         ))}
       </div>
 
       <style>{`
-        .service-list {
+        .svc-list {
           animation: fadeIn 0.3s ease-out;
         }
-
-        .service-grid {
+        .svc-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-          gap: 20px;
+          grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+          gap: 16px;
         }
-
         @media (max-width: 500px) {
-          .service-grid {
+          .svc-grid {
             grid-template-columns: 1fr;
           }
         }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Moon, Sun, User, CreditCard, Bell, Key } from 'lucide-react'
+import { Moon, Sun, User, CreditCard, Bell, Key, Check, Palette } from 'lucide-react'
 
 const LIGHT_THEME: Record<string, string> = {
   '--bg-primary': '#f5f5f5',
@@ -26,12 +26,12 @@ const DARK_THEME: Record<string, string> = {
 }
 
 const ACCENT_COLORS = [
-  { value: '#3b82f6', hover: '#2563eb' },
-  { value: '#8b5cf6', hover: '#7c3aed' },
-  { value: '#10b981', hover: '#059669' },
-  { value: '#f59e0b', hover: '#d97706' },
-  { value: '#ef4444', hover: '#dc2626' },
-  { value: '#ec4899', hover: '#db2777' }
+  { value: '#3b82f6', hover: '#2563eb', label: 'Blue' },
+  { value: '#8b5cf6', hover: '#7c3aed', label: 'Purple' },
+  { value: '#10b981', hover: '#059669', label: 'Green' },
+  { value: '#f59e0b', hover: '#d97706', label: 'Amber' },
+  { value: '#ef4444', hover: '#dc2626', label: 'Red' },
+  { value: '#ec4899', hover: '#db2777', label: 'Pink' }
 ]
 
 function applyTheme(mode: 'dark' | 'light') {
@@ -66,7 +66,7 @@ export function initTheme() {
 type SettingsTab = 'theme' | 'profile' | 'billing' | 'notifications' | 'api'
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Moon }[] = [
-  { id: 'theme', label: 'Theme', icon: Moon },
+  { id: 'theme', label: 'Theme', icon: Palette },
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -81,7 +81,6 @@ function ThemeSettings() {
     try { return localStorage.getItem('devdock-accent') || '#3b82f6' } catch { return '#3b82f6' }
   })
 
-  // Load saved settings from backend on mount
   useEffect(() => {
     window.electronAPI.getSettings().then((settings) => {
       if (settings.theme) {
@@ -112,35 +111,57 @@ function ThemeSettings() {
   }
 
   return (
-    <div className="settings-section">
-      <h3 className="settings-section-title">Appearance</h3>
-      <div className="theme-toggle-group">
+    <div className="set-section">
+      <h3 className="set-section-title">Appearance</h3>
+      <p className="set-section-desc">Choose your preferred theme mode</p>
+      <div className="set-theme-group">
         <button
-          className={`theme-option ${theme === 'dark' ? 'active' : ''}`}
+          className={`set-theme-opt ${theme === 'dark' ? 'active' : ''}`}
           onClick={() => setTheme('dark')}
         >
-          <Moon size={20} />
-          <span>Dark</span>
+          <div className="set-theme-preview set-theme-preview--dark">
+            <div className="set-theme-bar" />
+            <div className="set-theme-lines">
+              <div /><div /><div />
+            </div>
+          </div>
+          <div className="set-theme-label">
+            <Moon size={15} />
+            <span>Dark</span>
+            {theme === 'dark' && <Check size={14} className="set-theme-check" />}
+          </div>
         </button>
         <button
-          className={`theme-option ${theme === 'light' ? 'active' : ''}`}
+          className={`set-theme-opt ${theme === 'light' ? 'active' : ''}`}
           onClick={() => setTheme('light')}
         >
-          <Sun size={20} />
-          <span>Light</span>
+          <div className="set-theme-preview set-theme-preview--light">
+            <div className="set-theme-bar" />
+            <div className="set-theme-lines">
+              <div /><div /><div />
+            </div>
+          </div>
+          <div className="set-theme-label">
+            <Sun size={15} />
+            <span>Light</span>
+            {theme === 'light' && <Check size={14} className="set-theme-check" />}
+          </div>
         </button>
       </div>
 
-      <h3 className="settings-section-title" style={{ marginTop: 28 }}>Accent Color</h3>
-      <div className="accent-colors">
+      <h3 className="set-section-title" style={{ marginTop: 28 }}>Accent Color</h3>
+      <p className="set-section-desc">Personalize your interface</p>
+      <div className="set-accent-grid">
         {ACCENT_COLORS.map((color) => (
-          <div
+          <button
             key={color.value}
-            className={`accent-swatch ${accent === color.value ? 'selected' : ''}`}
-            style={{ background: color.value }}
-            title={color.value}
+            className={`set-accent-btn ${accent === color.value ? 'selected' : ''}`}
             onClick={() => handleAccent(color)}
-          />
+          >
+            <span className="set-accent-swatch" style={{ background: color.value }} />
+            <span className="set-accent-label">{color.label}</span>
+            {accent === color.value && <Check size={12} />}
+          </button>
         ))}
       </div>
     </div>
@@ -149,17 +170,19 @@ function ThemeSettings() {
 
 function ProfileSettings() {
   return (
-    <div className="settings-section">
-      <h3 className="settings-section-title">Profile Information</h3>
-      <div className="settings-form">
-        <div className="settings-field">
+    <div className="set-section">
+      <h3 className="set-section-title">Profile Information</h3>
+      <p className="set-section-desc">Manage your account details</p>
+      <div className="set-form">
+        <div className="set-field">
           <label>Display Name</label>
           <input type="text" defaultValue="Developer" placeholder="Your name" />
         </div>
-        <div className="settings-field">
+        <div className="set-field">
           <label>Email</label>
           <input type="email" defaultValue="dev@example.com" placeholder="Your email" />
         </div>
+        <button className="set-save-btn">Save Changes</button>
       </div>
     </div>
   )
@@ -167,15 +190,23 @@ function ProfileSettings() {
 
 function BillingSettings() {
   return (
-    <div className="settings-section">
-      <h3 className="settings-section-title">Current Plan</h3>
-      <div className="plan-card">
-        <div className="plan-info">
-          <span className="plan-name">Pro Plan</span>
-          <span className="plan-price">$12/month</span>
+    <div className="set-section">
+      <h3 className="set-section-title">Current Plan</h3>
+      <p className="set-section-desc">Manage your subscription</p>
+      <div className="set-plan">
+        <div className="set-plan-header">
+          <div>
+            <span className="set-plan-name">Pro Plan</span>
+            <span className="set-plan-badge">Active</span>
+          </div>
+          <span className="set-plan-price">$12<span>/month</span></span>
         </div>
-        <p className="plan-desc">Unlimited services, priority support, advanced logging</p>
-        <button className="btn-outline">Manage Subscription</button>
+        <ul className="set-plan-features">
+          <li><Check size={14} /> Unlimited services</li>
+          <li><Check size={14} /> Priority support</li>
+          <li><Check size={14} /> Advanced logging</li>
+        </ul>
+        <button className="set-outline-btn">Manage Subscription</button>
       </div>
     </div>
   )
@@ -186,7 +217,6 @@ function NotificationSettings() {
   const [crashAlerts, setCrashAlerts] = useState(true)
   const [weeklyReport, setWeeklyReport] = useState(false)
 
-  // Load notification prefs from backend
   useEffect(() => {
     window.electronAPI.getSettings().then((settings) => {
       if (settings.showNotifications !== undefined) {
@@ -196,31 +226,28 @@ function NotificationSettings() {
     }).catch(() => { /* */ })
   }, [])
 
+  const toggles = [
+    { label: 'Email Alerts', desc: 'Receive email notifications for service events', value: emailAlerts, set: setEmailAlerts },
+    { label: 'Crash Alerts', desc: 'Get notified immediately when a service crashes', value: crashAlerts, set: setCrashAlerts },
+    { label: 'Weekly Report', desc: 'Receive a weekly summary of service activity', value: weeklyReport, set: setWeeklyReport }
+  ]
+
   return (
-    <div className="settings-section">
-      <h3 className="settings-section-title">Notification Preferences</h3>
-      <div className="toggle-list">
-        <label className="toggle-row">
-          <div>
-            <span className="toggle-label">Email Alerts</span>
-            <span className="toggle-desc">Receive email notifications for service events</span>
-          </div>
-          <input type="checkbox" className="toggle-switch" checked={emailAlerts} onChange={(e) => setEmailAlerts(e.target.checked)} />
-        </label>
-        <label className="toggle-row">
-          <div>
-            <span className="toggle-label">Crash Alerts</span>
-            <span className="toggle-desc">Get notified immediately when a service crashes</span>
-          </div>
-          <input type="checkbox" className="toggle-switch" checked={crashAlerts} onChange={(e) => setCrashAlerts(e.target.checked)} />
-        </label>
-        <label className="toggle-row">
-          <div>
-            <span className="toggle-label">Weekly Report</span>
-            <span className="toggle-desc">Receive a weekly summary of service activity</span>
-          </div>
-          <input type="checkbox" className="toggle-switch" checked={weeklyReport} onChange={(e) => setWeeklyReport(e.target.checked)} />
-        </label>
+    <div className="set-section">
+      <h3 className="set-section-title">Notification Preferences</h3>
+      <p className="set-section-desc">Control how you receive alerts</p>
+      <div className="set-toggles">
+        {toggles.map((t) => (
+          <label key={t.label} className="set-toggle-row">
+            <div>
+              <span className="set-toggle-label">{t.label}</span>
+              <span className="set-toggle-desc">{t.desc}</span>
+            </div>
+            <div className={`set-switch ${t.value ? 'on' : ''}`} onClick={() => t.set(!t.value)}>
+              <div className="set-switch-thumb" />
+            </div>
+          </label>
+        ))}
       </div>
     </div>
   )
@@ -228,17 +255,21 @@ function NotificationSettings() {
 
 function ApiSettings() {
   const [revealed, setRevealed] = useState(false)
-  const maskedKey = 'sk-••••••••••••••••••••••••abcd'
+  const maskedKey = 'sk-\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022abcd'
   const fullKey = 'sk-devdock-a1b2c3d4e5f6g7h8i9j0abcd'
 
   return (
-    <div className="settings-section">
-      <h3 className="settings-section-title">API Access</h3>
-      <div className="api-key-box">
-        <code className="api-key">{revealed ? fullKey : maskedKey}</code>
-        <button className="btn-outline btn-sm" onClick={() => setRevealed((r) => !r)}>
-          {revealed ? 'Hide' : 'Reveal'}
-        </button>
+    <div className="set-section">
+      <h3 className="set-section-title">API Access</h3>
+      <p className="set-section-desc">Manage your API keys for external integrations</p>
+      <div className="set-api-box">
+        <div className="set-api-label">Secret Key</div>
+        <div className="set-api-row">
+          <code className="set-api-key">{revealed ? fullKey : maskedKey}</code>
+          <button className="set-outline-btn set-btn-sm" onClick={() => setRevealed((r) => !r)}>
+            {revealed ? 'Hide' : 'Reveal'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -258,18 +289,18 @@ export function Settings() {
   }
 
   return (
-    <div className="settings-page">
-      <div className="page-header">
-        <h2 className="page-title">Settings</h2>
-        <p className="page-subtitle">Manage your preferences</p>
+    <div className="set-page">
+      <div className="set-header">
+        <h2 className="set-title">Settings</h2>
+        <p className="set-sub">Manage your preferences</p>
       </div>
 
-      <div className="settings-layout">
-        <div className="settings-tabs">
+      <div className="set-layout">
+        <div className="set-sidebar">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              className={`settings-tab ${activeTab === id ? 'active' : ''}`}
+              className={`set-tab ${activeTab === id ? 'active' : ''}`}
               onClick={() => setActiveTab(id)}
             >
               <Icon size={16} />
@@ -278,53 +309,54 @@ export function Settings() {
           ))}
         </div>
 
-        <div className="settings-content">
+        <div className="set-content">
           {renderContent()}
         </div>
       </div>
 
       <style>{`
-        .settings-page {
-          animation: fadeIn 0.3s ease-out;
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
-        .page-header {
-          margin-bottom: 24px;
-        }
+        .set-page { animation: fadeIn 0.3s ease-out; }
 
-        .page-title {
-          font-size: 24px;
+        .set-header {
+          margin-bottom: 20px;
+          animation: slideDown 0.4s ease-out;
+        }
+        .set-title {
+          font-size: 22px;
           font-weight: 700;
           color: var(--text-primary);
-          margin: 0 0 4px 0;
+          margin: 0 0 2px 0;
         }
-
-        .page-subtitle {
-          font-size: 14px;
+        .set-sub {
+          font-size: 13px;
           color: var(--text-muted);
           margin: 0;
         }
 
-        .settings-layout {
+        .set-layout {
           display: flex;
-          gap: 24px;
+          gap: 0;
           background: var(--bg-secondary);
           border: 1px solid var(--border);
-          border-radius: 12px;
+          border-radius: 14px;
           overflow: hidden;
         }
 
-        .settings-tabs {
+        .set-sidebar {
           width: 200px;
           min-width: 200px;
           border-right: 1px solid var(--border);
           padding: 12px;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 2px;
         }
-
-        .settings-tab {
+        .set-tab {
           display: flex;
           align-items: center;
           gap: 10px;
@@ -332,206 +364,349 @@ export function Settings() {
           border-radius: 8px;
           background: transparent;
           color: var(--text-secondary);
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 500;
           text-align: left;
           width: 100%;
+          transition: all 0.2s;
         }
-
-        .settings-tab:hover {
+        .set-tab:hover {
           background: var(--bg-hover);
           color: var(--text-primary);
         }
-
-        .settings-tab.active {
-          background: rgba(59, 130, 246, 0.15);
+        .set-tab.active {
+          background: rgba(59, 130, 246, 0.12);
           color: var(--accent);
         }
 
-        .settings-content {
+        .set-content {
           flex: 1;
-          padding: 24px;
+          padding: 28px;
         }
 
-        .settings-section-title {
-          font-size: 16px;
+        .set-section {}
+        .set-section-title {
+          font-size: 15px;
           font-weight: 600;
           color: var(--text-primary);
+          margin: 0 0 4px 0;
+        }
+        .set-section-desc {
+          font-size: 13px;
+          color: var(--text-muted);
           margin: 0 0 16px 0;
         }
 
-        .theme-toggle-group {
+        /* Theme picker */
+        .set-theme-group {
           display: flex;
           gap: 12px;
         }
-
-        .theme-option {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 14px 24px;
-          border-radius: 10px;
-          background: var(--bg-tertiary);
-          color: var(--text-secondary);
+        .set-theme-opt {
+          flex: 1;
+          max-width: 200px;
+          border-radius: 12px;
           border: 2px solid var(--border);
-          font-size: 14px;
-          font-weight: 500;
+          background: var(--bg-tertiary);
+          padding: 0;
+          overflow: hidden;
+          cursor: pointer;
+          transition: all 0.2s;
         }
-
-        .theme-option.active {
-          border-color: var(--accent);
-          color: var(--accent);
-          background: rgba(59, 130, 246, 0.1);
-        }
-
-        .theme-option:hover {
+        .set-theme-opt:hover {
           border-color: var(--border-light);
         }
-
-        .accent-colors {
+        .set-theme-opt.active {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+        .set-theme-preview {
+          height: 80px;
+          padding: 10px;
           display: flex;
-          gap: 12px;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .set-theme-preview--dark {
+          background: #0f0f0f;
+        }
+        .set-theme-preview--light {
+          background: #f5f5f5;
+        }
+        .set-theme-bar {
+          height: 8px;
+          width: 60%;
+          border-radius: 4px;
+        }
+        .set-theme-preview--dark .set-theme-bar { background: #333; }
+        .set-theme-preview--light .set-theme-bar { background: #d4d4d4; }
+        .set-theme-lines {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .set-theme-lines div {
+          height: 5px;
+          border-radius: 3px;
+        }
+        .set-theme-lines div:nth-child(1) { width: 80%; }
+        .set-theme-lines div:nth-child(2) { width: 60%; }
+        .set-theme-lines div:nth-child(3) { width: 40%; }
+        .set-theme-preview--dark .set-theme-lines div { background: #252525; }
+        .set-theme-preview--light .set-theme-lines div { background: #e0e0e0; }
+        .set-theme-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--text-secondary);
+        }
+        .set-theme-opt.active .set-theme-label {
+          color: var(--accent);
+        }
+        .set-theme-check {
+          margin-left: auto;
+          color: var(--accent);
         }
 
-        .accent-swatch {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
+        /* Accent colors */
+        .set-accent-grid {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .set-accent-btn {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          padding: 8px 14px;
+          border-radius: 10px;
+          background: var(--bg-tertiary);
+          border: 2px solid var(--border);
+          color: var(--text-secondary);
+          font-size: 12px;
+          font-weight: 500;
           cursor: pointer;
-          border: 3px solid transparent;
-          transition: transform 0.15s ease;
+          transition: all 0.2s;
+        }
+        .set-accent-btn:hover {
+          border-color: var(--border-light);
+        }
+        .set-accent-btn.selected {
+          border-color: var(--accent);
+          color: var(--text-primary);
+        }
+        .set-accent-swatch {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+        }
+        .set-accent-label {
+          font-size: 12px;
         }
 
-        .accent-swatch:hover {
-          transform: scale(1.15);
-        }
-
-        .accent-swatch.selected {
-          border-color: var(--text-primary);
-          transform: scale(1.15);
-        }
-
-        .settings-form {
+        /* Form */
+        .set-form {
           display: flex;
           flex-direction: column;
           gap: 16px;
           max-width: 400px;
         }
-
-        .settings-field label {
+        .set-field label {
           display: block;
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 500;
           color: var(--text-secondary);
           margin-bottom: 6px;
         }
-
-        .settings-field input {
+        .set-field input {
           width: 100%;
         }
+        .set-save-btn {
+          align-self: flex-start;
+          padding: 9px 20px;
+          border-radius: 10px;
+          background: var(--accent);
+          color: white;
+          font-size: 13px;
+          font-weight: 500;
+          transition: all 0.2s;
+        }
+        .set-save-btn:hover {
+          background: var(--accent-hover);
+        }
 
-        .plan-card {
+        /* Plan card */
+        .set-plan {
           background: var(--bg-tertiary);
           border: 1px solid var(--border);
-          border-radius: 10px;
+          border-radius: 12px;
           padding: 20px;
           max-width: 400px;
         }
-
-        .plan-info {
+        .set-plan-header {
           display: flex;
-          align-items: baseline;
-          gap: 12px;
-          margin-bottom: 8px;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 14px;
         }
-
-        .plan-name {
-          font-size: 20px;
+        .set-plan-name {
+          font-size: 18px;
           font-weight: 700;
           color: var(--accent);
         }
-
-        .plan-price {
-          font-size: 14px;
+        .set-plan-badge {
+          margin-left: 8px;
+          font-size: 10px;
+          font-weight: 600;
+          color: var(--success);
+          background: rgba(34, 197, 94, 0.15);
+          padding: 3px 8px;
+          border-radius: 20px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .set-plan-price {
+          font-size: 22px;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+        .set-plan-price span {
+          font-size: 13px;
+          font-weight: 400;
           color: var(--text-muted);
         }
-
-        .plan-desc {
-          font-size: 14px;
-          color: var(--text-secondary);
+        .set-plan-features {
+          list-style: none;
+          padding: 0;
           margin: 0 0 16px 0;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .set-plan-features li {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: var(--text-secondary);
+        }
+        .set-plan-features li svg {
+          color: var(--success);
         }
 
-        .btn-outline {
+        /* Outline button */
+        .set-outline-btn {
           padding: 8px 16px;
           border-radius: 8px;
           background: transparent;
           color: var(--accent);
           border: 1px solid var(--accent);
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 500;
+          transition: all 0.2s;
         }
-
-        .btn-outline:hover {
+        .set-outline-btn:hover {
           background: rgba(59, 130, 246, 0.1);
         }
-
-        .btn-sm {
+        .set-btn-sm {
           padding: 6px 12px;
-          font-size: 13px;
+          font-size: 12px;
         }
 
-        .toggle-list {
+        /* Toggle rows */
+        .set-toggles {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 0;
         }
-
-        .toggle-row {
+        .set-toggle-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 14px 0;
+          padding: 16px 0;
           border-bottom: 1px solid var(--border);
           cursor: pointer;
         }
-
-        .toggle-label {
+        .set-toggle-row:last-child {
+          border-bottom: none;
+        }
+        .set-toggle-label {
           display: block;
           font-size: 14px;
           font-weight: 500;
           color: var(--text-primary);
         }
-
-        .toggle-desc {
+        .set-toggle-desc {
           display: block;
-          font-size: 13px;
+          font-size: 12px;
           color: var(--text-muted);
           margin-top: 2px;
         }
 
-        .toggle-switch {
+        /* Custom switch */
+        .set-switch {
           width: 44px;
           height: 24px;
+          border-radius: 12px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          position: relative;
           cursor: pointer;
-          accent-color: var(--accent);
+          transition: all 0.3s;
+          flex-shrink: 0;
+        }
+        .set-switch.on {
+          background: var(--accent);
+          border-color: var(--accent);
+        }
+        .set-switch-thumb {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: white;
+          position: absolute;
+          top: 2px;
+          left: 2px;
+          transition: transform 0.3s;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .set-switch.on .set-switch-thumb {
+          transform: translateX(20px);
         }
 
-        .api-key-box {
+        /* API key */
+        .set-api-box {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 16px;
+          max-width: 500px;
+        }
+        .set-api-label {
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--text-muted);
+          margin-bottom: 8px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .set-api-row {
           display: flex;
           align-items: center;
           gap: 12px;
-          background: var(--bg-tertiary);
-          border: 1px solid var(--border);
-          border-radius: 10px;
-          padding: 16px;
         }
-
-        .api-key {
+        .set-api-key {
           font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-          font-size: 14px;
+          font-size: 13px;
           color: var(--text-secondary);
           flex: 1;
+          background: var(--bg-primary);
+          padding: 8px 12px;
+          border-radius: 8px;
+          border: 1px solid var(--border);
         }
       `}</style>
     </div>

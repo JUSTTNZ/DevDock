@@ -35,42 +35,43 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   }, [collapsed])
 
   return (
-    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
-      <div className="sidebar-header">
+    <aside className={`sb ${collapsed ? 'sb--collapsed' : ''}`}>
+      <div className="sb-header">
         {!collapsed && (
-          <h1 className="sidebar-logo">
-            <span className="logo-icon">⚡</span>
+          <h1 className="sb-logo">
+            <span className="sb-logo-icon">⚡</span>
             DevDock
           </h1>
         )}
-        {collapsed && <span className="logo-icon-only">⚡</span>}
+        {collapsed && <span className="sb-logo-icon-only">⚡</span>}
       </div>
 
-      <nav className="sidebar-nav">
+      <nav className="sb-nav">
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            className={`nav-item ${currentPage === id ? 'active' : ''}`}
+            className={`sb-item ${currentPage === id ? 'active' : ''}`}
             onClick={() => onNavigate(id)}
             title={collapsed ? label : undefined}
           >
-            <Icon size={20} />
+            <Icon size={19} />
             {!collapsed && <span>{label}</span>}
+            {currentPage === id && !collapsed && <div className="sb-item-indicator" />}
           </button>
         ))}
       </nav>
 
       <button
-        className="collapse-toggle"
+        className="sb-collapse"
         onClick={() => setCollapsed((c) => !c)}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        {collapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
         {!collapsed && <span>Collapse</span>}
       </button>
 
       <style>{`
-        .sidebar {
+        .sb {
           width: 240px;
           min-width: 240px;
           height: 100vh;
@@ -78,18 +79,17 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           border-right: 1px solid var(--border);
           display: flex;
           flex-direction: column;
-          transition: width 0.2s ease, min-width 0.2s ease;
+          transition: width 0.25s ease, min-width 0.25s ease;
           position: sticky;
           top: 0;
           z-index: 50;
         }
-
-        .sidebar.collapsed {
+        .sb--collapsed {
           width: 64px;
           min-width: 64px;
         }
 
-        .sidebar-header {
+        .sb-header {
           padding: 20px 16px;
           border-bottom: 1px solid var(--border);
           min-height: 65px;
@@ -97,39 +97,36 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           align-items: center;
           justify-content: center;
         }
-
-        .sidebar-logo {
-          font-size: 20px;
+        .sb-logo {
+          font-size: 18px;
           font-weight: 700;
           display: flex;
           align-items: center;
           gap: 8px;
           color: var(--text-primary);
           white-space: nowrap;
+          letter-spacing: -0.3px;
+        }
+        .sb-logo-icon {
+          font-size: 22px;
+        }
+        .sb-logo-icon-only {
+          font-size: 22px;
         }
 
-        .logo-icon {
-          font-size: 24px;
-        }
-
-        .logo-icon-only {
-          font-size: 24px;
-        }
-
-        .sidebar-nav {
+        .sb-nav {
           flex: 1;
           padding: 12px 8px;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 2px;
         }
-
-        .nav-item {
+        .sb-item {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 11px;
           padding: 10px 12px;
-          border-radius: 8px;
+          border-radius: 10px;
           background: transparent;
           color: var(--text-secondary);
           font-size: 14px;
@@ -138,24 +135,33 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           overflow: hidden;
           width: 100%;
           text-align: left;
+          position: relative;
+          transition: all 0.2s;
         }
-
-        .sidebar.collapsed .nav-item {
+        .sb--collapsed .sb-item {
           justify-content: center;
           padding: 10px;
         }
-
-        .nav-item:hover {
+        .sb-item:hover {
           background: var(--bg-hover);
           color: var(--text-primary);
         }
-
-        .nav-item.active {
-          background: rgba(59, 130, 246, 0.15);
+        .sb-item.active {
+          background: rgba(59, 130, 246, 0.12);
           color: var(--accent);
         }
+        .sb-item-indicator {
+          position: absolute;
+          right: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 3px;
+          height: 18px;
+          border-radius: 3px 0 0 3px;
+          background: var(--accent);
+        }
 
-        .collapse-toggle {
+        .sb-collapse {
           display: flex;
           align-items: center;
           gap: 8px;
@@ -167,14 +173,13 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           font-size: 13px;
           white-space: nowrap;
           overflow: hidden;
+          transition: all 0.2s;
         }
-
-        .sidebar.collapsed .collapse-toggle {
+        .sb--collapsed .sb-collapse {
           justify-content: center;
           padding: 12px;
         }
-
-        .collapse-toggle:hover {
+        .sb-collapse:hover {
           background: var(--bg-hover);
           color: var(--text-secondary);
         }

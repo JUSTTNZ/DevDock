@@ -5,6 +5,7 @@ import { Services } from './pages/Services'
 import { Logs } from './pages/Logs'
 import { Settings, initTheme } from './pages/Settings'
 import { useServices } from './hooks/useServices'
+import { useServiceHistory } from './hooks/useServiceHistory'
 
 initTheme()
 
@@ -21,16 +22,16 @@ function App() {
     deleteService
   } = useServices()
 
+  const history = useServiceHistory(services)
+
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
         return (
           <Dashboard
             services={services}
-            onStart={startService}
-            onStop={stopService}
-            onRestart={restartService}
-            onDelete={deleteService}
+            history={history}
+            onNavigate={setCurrentPage}
           />
         )
       case 'services':
