@@ -16,7 +16,7 @@ ipcMain.handle('get-services', async () => {
 
 ipcMain.handle('start-service', async (event, serviceId: string) => {
   const { serviceManager } = getManagers();
-  const success = serviceManager.startService(serviceId);
+  const success = await serviceManager.startService(serviceId);
   return { success, message: success ? 'Service started' : 'Failed to start' };
 });
 
