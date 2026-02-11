@@ -121,7 +121,17 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
                 value={cwd}
                 onChange={(e) => setCwd(e.target.value)}
               />
-              <FolderOpen size={18} className="input-icon" />
+              <button
+                type="button"
+                className="browse-btn"
+                onClick={async () => {
+                  const folder = await window.electronAPI.browseFolder()
+                  if (folder) setCwd(folder)
+                }}
+                title="Browse for folder"
+              >
+                <FolderOpen size={18} />
+              </button>
             </div>
           </div>
 
@@ -245,12 +255,25 @@ export function AddServiceModal({ isOpen, onClose, onSubmit }: AddServiceModalPr
           padding-right: 40px;
         }
 
-        .input-icon {
+        .browse-btn {
           position: absolute;
-          right: 12px;
+          right: 4px;
           top: 50%;
           transform: translateY(-50%);
+          background: var(--bg-tertiary);
           color: var(--text-muted);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          padding: 6px 10px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+        }
+
+        .browse-btn:hover {
+          background: var(--bg-hover);
+          color: var(--accent);
+          border-color: var(--accent);
         }
 
         .form-row {
