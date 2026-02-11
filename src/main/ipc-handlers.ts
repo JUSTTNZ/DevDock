@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { ServiceConfig, AppSettings } from '../shared/types';
 
 function getManagers() {
@@ -9,7 +9,8 @@ function getManagers() {
 
 // Service Management
 ipcMain.handle('get-services', async () => {
-  const { configManager } = getManagers();
+  const { configManager, serviceManager } = getManagers();
+  await serviceManager.updateServiceStats();
   return configManager.getAllServices();
 });
 
@@ -65,6 +66,30 @@ ipcMain.handle('save-settings', async (event, settings: AppSettings) => {
 // Get current working directory
 ipcMain.handle('get-cwd', async () => {
   return process.cwd();
+});
+
+// Logs
+ipcMain.handle('get-logs', async (_event, serviceId: string) => {
+  const { serviceManager } = getManagers();
+  return serviceManager.getLogs(serviceId);
+});
+
+ipcMain.handle('clear-logs', async (_event, serviceId: string) => {
+  const { serviceManager } = getManagers();
+  serviceManager.clearLogs(serviceId);
+  return { success: true };
+});
+
+// Browse for folder
+ipcMain.handle('browse-folder', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(win!, {
+    properties: ['openDirectory']
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
 });
 
 console.log('IPC handlers registered');

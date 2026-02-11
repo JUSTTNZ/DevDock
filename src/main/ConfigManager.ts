@@ -15,7 +15,6 @@ export class ConfigManager {
     const homeDir = os.homedir();
     const configDir = path.join(homeDir, CONFIG_DIR);
     
-    // Create directory if it doesn't exist
     if (!fs.existsSync(configDir)) {
       fs.mkdirSync(configDir, { recursive: true });
     }
