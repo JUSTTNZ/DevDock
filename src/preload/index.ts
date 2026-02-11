@@ -12,6 +12,11 @@ export interface ElectronAPI {
   updateService: (id: string, updates: Partial<ServiceConfig>) => Promise<any>
   deleteService: (id: string) => Promise<any>
   getCwd: () => Promise<string>
+  browseFolder: () => Promise<string | null>
+
+  // Logs
+  getLogs: (serviceId: string) => Promise<any[]>
+  clearLogs: (serviceId: string) => Promise<any>
 
   // Settings
   getSettings: () => Promise<AppSettings>
@@ -32,6 +37,11 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('update-service', id, updates),
   deleteService: (id: string) => ipcRenderer.invoke('delete-service', id),
   getCwd: () => ipcRenderer.invoke('get-cwd'),
+  browseFolder: () => ipcRenderer.invoke('browse-folder'),
+
+  // Logs
+  getLogs: (serviceId: string) => ipcRenderer.invoke('get-logs', serviceId),
+  clearLogs: (serviceId: string) => ipcRenderer.invoke('clear-logs', serviceId),
 
   // Settings
   getSettings: () => ipcRenderer.invoke('get-settings'),
