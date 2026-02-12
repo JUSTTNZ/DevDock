@@ -12,6 +12,7 @@ export interface Service {
   autoRestart: boolean;
   autoStart: boolean;
   pid?: number;
+  activePort?: number;
 }
 
 export interface ServiceConfig {

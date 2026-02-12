@@ -22,13 +22,13 @@ ipcMain.handle('start-service', async (event, serviceId: string) => {
 
 ipcMain.handle('stop-service', async (event, serviceId: string) => {
   const { serviceManager } = getManagers();
-  const success = serviceManager.stopService(serviceId);
+  const success = await serviceManager.stopService(serviceId);
   return { success, message: success ? 'Service stopped' : 'Failed to stop' };
 });
 
 ipcMain.handle('restart-service', async (event, serviceId: string) => {
   const { serviceManager } = getManagers();
-  const success = serviceManager.restartService(serviceId);
+  const success = await serviceManager.restartService(serviceId);
   return { success, message: success ? 'Service restarted' : 'Failed to restart' };
 });
 
@@ -46,7 +46,7 @@ ipcMain.handle('update-service', async (event, serviceId: string, updates: Parti
 
 ipcMain.handle('delete-service', async (event, serviceId: string) => {
   const { configManager, serviceManager } = getManagers();
-  serviceManager.stopService(serviceId);
+  await serviceManager.stopService(serviceId);
   const success = configManager.deleteService(serviceId);
   return { success, message: success ? 'Service deleted' : 'Service not found' };
 });

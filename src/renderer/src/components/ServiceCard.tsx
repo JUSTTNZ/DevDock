@@ -45,7 +45,14 @@ export function ServiceCard({ service, onStart, onStop, onRestart, onDelete }: S
             <span className="svc-card-status">{service.status}</span>
           </div>
         </div>
-        {service.port && <span className="svc-card-port">:{service.port}</span>}
+        {(service.activePort || service.port) && (
+          <span className="svc-card-port">
+            :{service.activePort || service.port}
+            {service.activePort && service.activePort !== service.port && (
+              <span className="svc-port-note" title={`Configured: ${service.port}`}> (was :{service.port})</span>
+            )}
+          </span>
+        )}
       </div>
 
       <div className="svc-card-details">
@@ -166,6 +173,11 @@ export function ServiceCard({ service, onStart, onStop, onRestart, onDelete }: S
           padding: 3px 10px;
           border-radius: 6px;
           font-weight: 600;
+        }
+        .svc-port-note {
+          font-size: 10px;
+          color: var(--text-muted);
+          font-weight: 400;
         }
 
         .svc-card-details {

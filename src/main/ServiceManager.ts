@@ -29,6 +29,20 @@ function isPortFree(port: number): Promise<boolean> {
   });
 }
 
+// Wait ms milliseconds
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Check if a port is free, retrying a few times with delay (handles Windows TIME_WAIT)
+async function isPortFreeWithRetry(port: number, retries = 3, delayMs = 1000): Promise<boolean> {
+  for (let i = 0; i < retries; i++) {
+    if (await isPortFree(port)) return true;
+    if (i < retries - 1) await delay(delayMs);
+  }
+  return false;
+}
+
 // Find the next free port starting from the given port
 async function findFreePort(startPort: number): Promise<number> {
   let port = startPort;
@@ -80,38 +94,47 @@ export class ServiceManager {
       this.cleanupStaleLockFiles(service);
 
       // Resolve port conflicts
-      let assignedPort = service.port;
+      const configuredPort = service.port;
+      let assignedPort = configuredPort;
       const env: Record<string, string> = { ...process.env } as Record<string, string>;
 
-      if (service.port) {
-        const portConflict = await this.checkPortConflict(serviceId, service.port);
+      if (configuredPort) {
+        // First check if another managed service owns this port
+        const managedConflict = this.checkManagedPortConflict(serviceId, configuredPort);
 
-        if (portConflict) {
-          // Port is in use — find a free one
-          const freePort = await findFreePort(service.port + 1);
+        if (managedConflict) {
+          // Another managed service is actively using this port — find a free one
+          const freePort = await findFreePort(configuredPort + 1);
           if (freePort > 0) {
             this.handleLog(serviceId, 'WARN',
-              `⚠ Port ${service.port} is already in use${portConflict.owner ? ` by "${portConflict.owner}"` : ''}. Switching to port ${freePort}.`);
+              `⚠ Port ${configuredPort} is in use by "${managedConflict}". Using port ${freePort} instead.`);
             assignedPort = freePort;
-            // Set PORT env var — most frameworks (Next.js, React, Express, Vite) respect this
             env['PORT'] = String(freePort);
-          } else {
-            this.handleLog(serviceId, 'WARN',
-              `⚠ Port ${service.port} is in use and no free port found nearby. The service may pick its own port.`);
+          }
+        } else {
+          // Retry the configured port a few times (handles Windows TIME_WAIT after stop)
+          const portFree = await isPortFreeWithRetry(configuredPort, 3, 1000);
+          if (!portFree) {
+            // Port is genuinely in use by something external — find a free one
+            const freePort = await findFreePort(configuredPort + 1);
+            if (freePort > 0) {
+              this.handleLog(serviceId, 'WARN',
+                `⚠ Port ${configuredPort} is in use by another process. Using port ${freePort} instead.`);
+              assignedPort = freePort;
+              env['PORT'] = String(freePort);
+            } else {
+              this.handleLog(serviceId, 'WARN',
+                `⚠ Port ${configuredPort} is in use and no free port found nearby. The service may pick its own port.`);
+            }
           }
         }
       }
 
-      // Track the port this service is actually using
+      // Track the runtime port (never overwrite the configured port in config)
       if (assignedPort) {
         this.activePorts.set(serviceId, assignedPort);
       }
-
-      // Update the service port to reflect what's actually being used
-      if (assignedPort && assignedPort !== service.port) {
-        service.port = assignedPort;
-        this.configManager.updateService(serviceId, { port: assignedPort });
-      }
+      service.activePort = assignedPort;
 
       // Spawn the process with the (possibly updated) environment
       const childProcess = spawn(service.command, {
@@ -158,28 +181,20 @@ export class ServiceManager {
     }
   }
 
-  // Check if a port conflicts with another running service or any system process
-  private async checkPortConflict(serviceId: string, port: number): Promise<{ inUse: boolean; owner?: string } | null> {
-    // First check: is another one of our managed services using this port?
+  // Check if another managed service is actively using this port
+  private checkManagedPortConflict(serviceId: string, port: number): string | null {
     for (const [otherId, otherPort] of this.activePorts) {
       if (otherId !== serviceId && otherPort === port) {
         const otherService = this.configManager.getService(otherId);
         if (otherService && (otherService.status === 'running' || otherService.status === 'starting')) {
-          return { inUse: true, owner: otherService.name };
+          return otherService.name;
         }
       }
     }
-
-    // Second check: is anything else on the system using this port?
-    const free = await isPortFree(port);
-    if (!free) {
-      return { inUse: true };
-    }
-
     return null;
   }
 
-  stopService(serviceId: string): boolean {
+  async stopService(serviceId: string): Promise<boolean> {
     const service = this.configManager.getService(serviceId);
     if (!service) return false;
 
@@ -196,9 +211,27 @@ export class ServiceManager {
     try {
       if (childProcess.pid) {
         if (process.platform === 'win32') {
-          spawn('taskkill', ['/pid', childProcess.pid.toString(), '/T', '/F']);
+          // Wait for taskkill to fully terminate the process tree
+          await new Promise<void>((resolve) => {
+            const kill = spawn('taskkill', ['/pid', childProcess.pid!.toString(), '/T', '/F']);
+            kill.on('close', () => resolve());
+            kill.on('error', () => resolve());
+            // Safety timeout — don't hang forever
+            setTimeout(() => resolve(), 5000);
+          });
         } else {
           childProcess.kill('SIGTERM');
+          // Give SIGTERM a moment, then force kill if still alive
+          await new Promise<void>((resolve) => {
+            const timeout = setTimeout(() => {
+              try { childProcess.kill('SIGKILL'); } catch {}
+              resolve();
+            }, 3000);
+            childProcess.on('exit', () => {
+              clearTimeout(timeout);
+              resolve();
+            });
+          });
         }
       }
 
@@ -206,6 +239,7 @@ export class ServiceManager {
       this.startTimes.delete(serviceId);
       service.status = 'stopped';
       service.pid = undefined;
+      service.activePort = undefined;
 
       console.log(`Service ${serviceId} stopped`);
       return true;
@@ -215,12 +249,9 @@ export class ServiceManager {
     }
   }
 
-  restartService(serviceId: string): boolean {
-    this.stopService(serviceId);
-    const delay = process.platform === 'win32' ? 2500 : 1000;
-    setTimeout(() => {
-      this.startService(serviceId);
-    }, delay);
+  async restartService(serviceId: string): Promise<boolean> {
+    await this.stopService(serviceId);
+    await this.startService(serviceId);
     return true;
   }
 
@@ -379,6 +410,9 @@ export class ServiceManager {
         service.uptime = '0s';
       }
 
+      // Attach runtime port info
+      service.activePort = this.activePorts.get(service.id) || undefined;
+
       const proc = this.processes.get(service.id);
       if (proc && proc.pid && service.status === 'running') {
         try {
@@ -408,12 +442,12 @@ export class ServiceManager {
     }
   }
 
-  stopAll(): void {
+  async stopAll(): Promise<void> {
     const services = this.configManager.getAllServices();
-    services.forEach(service => {
-      if (service.status === 'running') {
-        this.stopService(service.id);
-      }
-    });
+    await Promise.all(
+      services
+        .filter(service => service.status === 'running')
+        .map(service => this.stopService(service.id))
+    );
   }
 }

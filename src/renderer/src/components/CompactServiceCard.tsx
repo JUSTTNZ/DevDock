@@ -13,6 +13,8 @@ const statusColors: Record<string, string> = {
 }
 
 export function CompactServiceCard({ service, onClick }: Props) {
+  const displayPort = service.activePort || service.port
+
   return (
     <div className="compact-card" onClick={onClick}>
       <div className="compact-card-header">
@@ -21,6 +23,9 @@ export function CompactServiceCard({ service, onClick }: Props) {
           style={{ background: statusColors[service.status] || 'var(--text-muted)' }}
         />
         <span className="compact-name">{service.name}</span>
+        {displayPort && (
+          <span className="compact-port">:{displayPort}</span>
+        )}
       </div>
       <div className="compact-stats">
         <span className="compact-stat">CPU {service.cpu || '0%'}</span>
@@ -60,6 +65,17 @@ export function CompactServiceCard({ service, onClick }: Props) {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+        .compact-port {
+          font-family: monospace;
+          font-size: 11px;
+          color: var(--accent);
+          background: rgba(59, 130, 246, 0.1);
+          padding: 1px 6px;
+          border-radius: 4px;
+          font-weight: 600;
+          margin-left: auto;
+          flex-shrink: 0;
         }
         .compact-stats {
           display: flex;

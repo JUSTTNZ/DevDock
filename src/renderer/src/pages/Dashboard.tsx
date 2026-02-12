@@ -6,8 +6,8 @@ import type { HistoryPoint } from '../hooks/useServiceHistory'
 import { parseCpuToNumber, parseMemoryToMB } from '../utils/parsers'
 import { CpuChart } from '../components/charts/CpuChart'
 import { MemoryChart } from '../components/charts/MemoryChart'
+import { NetworkChart } from '../components/charts/NetworkChart'
 import { StatusPieChart } from '../components/charts/StatusPieChart'
-import { ServiceBars } from '../components/charts/ServiceBars'
 import { CompactServiceCard } from '../components/CompactServiceCard'
 
 interface DashboardProps {
@@ -98,14 +98,14 @@ export function Dashboard({ services, history, onNavigate }: DashboardProps) {
         <MemoryChart history={history} />
       </div>
 
-      {/* Charts row 2: Pie + Bars */}
+      {/* Charts row 2: Network Activity (full width) */}
       <div className="dash-charts-row dash-charts-row-2">
-        <div className="dash-chart-pie">
-          <StatusPieChart services={services} />
-        </div>
-        <div className="dash-chart-bars">
-          <ServiceBars services={services} />
-        </div>
+        <NetworkChart history={history} />
+      </div>
+
+      {/* Charts row 3: Status Pie */}
+      <div className="dash-charts-row dash-charts-row-3">
+        <StatusPieChart services={services} />
       </div>
 
       {/* Compact service grid */}
@@ -327,15 +327,10 @@ export function Dashboard({ services, history, onNavigate }: DashboardProps) {
           flex: 1;
         }
         .dash-charts-row-2 {
-          display: flex;
-          gap: 12px;
           animation: slideUp 0.5s ease-out 0.4s both;
         }
-        .dash-chart-pie {
-          flex: 0 0 35%;
-        }
-        .dash-chart-bars {
-          flex: 1;
+        .dash-charts-row-3 {
+          animation: slideUp 0.5s ease-out 0.45s both;
         }
 
         /* Compact grid */
@@ -358,11 +353,9 @@ export function Dashboard({ services, history, onNavigate }: DashboardProps) {
             grid-template-columns: repeat(2, 1fr);
           }
           .dash-charts-row,
-          .dash-charts-row-2 {
+          .dash-charts-row-2,
+          .dash-charts-row-3 {
             flex-direction: column;
-          }
-          .dash-chart-pie {
-            flex: unset;
           }
         }
       `}</style>
