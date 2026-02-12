@@ -415,23 +415,46 @@ export class ServiceManager {
 
       const proc = this.processes.get(service.id);
       if (proc && proc.pid && service.status === 'running') {
+        let totalCpu = 0;
+        let totalMem = 0;
+        let gotStats = false;
+
+        // Try 1: get full process tree stats
         try {
           const pids = await pidtree(proc.pid, { root: true });
           const statsMap = await pidusage(pids);
-          let totalCpu = 0;
-          let totalMem = 0;
           for (const pid of pids) {
             if (statsMap[pid]) {
               totalCpu += statsMap[pid].cpu;
               totalMem += statsMap[pid].memory;
             }
           }
+          gotStats = totalCpu > 0 || totalMem > 0;
+        } catch {
+          // pidtree can fail on Windows shell-spawned processes
+        }
+
+        // Try 2: fall back to just the main PID
+        if (!gotStats) {
+          try {
+            const stats = await pidusage(proc.pid);
+            if (stats) {
+              totalCpu = stats.cpu;
+              totalMem = stats.memory;
+              gotStats = true;
+            }
+          } catch {
+            // pidusage failed for this PID too
+          }
+        }
+
+        if (gotStats) {
           const memMB = totalMem / (1024 * 1024);
           service.memory = memMB >= 1024
             ? `${(memMB / 1024).toFixed(1)} GB`
             : `${Math.round(memMB)} MB`;
           service.cpu = `${totalCpu.toFixed(1)}%`;
-        } catch {
+        } else {
           service.memory = '0 MB';
           service.cpu = '0%';
         }
