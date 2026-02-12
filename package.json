@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
-  "author": "",
+  "author": "JUSTTNZ <codebynz01@gmail.com>",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^20.10.0",
