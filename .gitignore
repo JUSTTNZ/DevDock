@@ -24,6 +24,12 @@ npm-debug.log*
 
 # Config (optional - remove if you want to commit user's services)
 .devdashboard/
+.devdock/
 
 # Electron
 out/
+release/
+
+# Claude Code
+.claude/
+CLAUDE.md
