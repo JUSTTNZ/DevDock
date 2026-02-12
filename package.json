@@ -1,7 +1,7 @@
 {
-  "name": "dev-dashboard",
+  "name": "devdock",
   "version": "1.0.0",
-  "description": "Developer service management dashboard",
+  "description": "Developer service management tool - manage, monitor, and orchestrate your dev services",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -9,6 +9,7 @@
     "preview": "electron-vite preview",
     "package:mac": "electron-vite build && electron-builder --mac",
     "package:win": "electron-vite build && electron-builder --win",
+    "package:linux": "electron-vite build && electron-builder --linux",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],
@@ -34,8 +35,8 @@
     "recharts": "^3.7.0"
   },
   "build": {
-    "appId": "com.devdashboard.app",
-    "productName": "Dev Dashboard",
+    "appId": "com.devdock.app",
+    "productName": "DevDock",
     "directories": {
       "output": "release"
     },
@@ -47,6 +48,9 @@
     },
     "win": {
       "target": "nsis"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"]
     }
   }
 }

@@ -1,6 +1,6 @@
 import { AppSettings } from './types';
 
-export const CONFIG_DIR = '.devdashboard';
+export const CONFIG_DIR = '.devdock';
 export const CONFIG_FILE = 'config.json';
 export const SETTINGS_FILE = 'settings.json';
 
