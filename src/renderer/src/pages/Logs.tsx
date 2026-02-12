@@ -122,8 +122,11 @@ export function Logs({ services }: LogsProps) {
 
       {services.length === 0 ? (
         <div className="logs-empty-full">
-          <Terminal size={40} strokeWidth={1} />
-          <p>No services configured yet</p>
+          <div className="logs-empty-icon">
+            <Terminal size={36} strokeWidth={1.5} />
+          </div>
+          <h3 className="logs-empty-title">No services yet</h3>
+          <p className="logs-empty-desc">Add a service from the Services page to start seeing logs here.</p>
         </div>
       ) : (
         <>
@@ -167,8 +170,25 @@ export function Logs({ services }: LogsProps) {
           <div className="logs-container" onScroll={handleScroll}>
             {filteredLogs.length === 0 ? (
               <div className="logs-empty">
-                <Terminal size={24} strokeWidth={1} />
-                <span>No logs yet. Start the service to see output.</span>
+                <div className="logs-empty-icon-sm">
+                  <Terminal size={28} strokeWidth={1.5} />
+                </div>
+                <h4 className="logs-empty-title-sm">
+                  {filter !== 'ALL'
+                    ? `No ${filter} logs`
+                    : activeService?.status === 'running'
+                      ? 'Waiting for output...'
+                      : 'No logs yet'}
+                </h4>
+                <p className="logs-empty-hint">
+                  {filter !== 'ALL'
+                    ? `No ${filter.toLowerCase()}-level entries for this service. Try switching the filter.`
+                    : activeService?.status === 'stopped'
+                      ? 'This service is stopped. Start it to begin capturing logs.'
+                      : activeService?.status === 'crashed'
+                        ? 'This service has crashed. Check the service status and restart it.'
+                        : 'Output from the service will appear here in real time.'}
+                </p>
               </div>
             ) : (
               filteredLogs.map((entry, i) => (
@@ -368,28 +388,75 @@ export function Logs({ services }: LogsProps) {
         }
 
         .logs-empty {
-          color: var(--text-muted);
           text-align: center;
-          padding: 60px 0;
+          padding: 60px 20px;
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 10px;
-          font-size: 13px;
+          gap: 6px;
         }
-        .logs-empty-full {
+        .logs-empty-icon-sm {
+          width: 52px;
+          height: 52px;
+          border-radius: 12px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: center;
           color: var(--text-muted);
+          margin-bottom: 6px;
+        }
+        .logs-empty-title-sm {
+          margin: 0;
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+        .logs-empty-hint {
+          margin: 0;
+          font-size: 12px;
+          color: var(--text-muted);
+          max-width: 300px;
+          line-height: 1.5;
+        }
+
+        .logs-empty-full {
           text-align: center;
-          padding: 80px 0;
+          padding: 80px 20px;
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 12px;
+          gap: 8px;
           background: var(--bg-secondary);
           border: 1px solid var(--border);
           border-radius: 12px;
         }
-        .logs-empty-full p { margin: 0; font-size: 14px; }
+        .logs-empty-icon {
+          width: 64px;
+          height: 64px;
+          border-radius: 16px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-muted);
+          margin-bottom: 4px;
+        }
+        .logs-empty-title {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+        .logs-empty-desc {
+          margin: 0;
+          font-size: 13px;
+          color: var(--text-muted);
+          max-width: 320px;
+          line-height: 1.5;
+        }
 
         .log-entry {
           display: flex;
