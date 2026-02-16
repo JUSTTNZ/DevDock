@@ -1,7 +1,8 @@
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execSync, ChildProcess } from 'child_process';
 import { existsSync, unlinkSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
-import { createServer } from 'net';
+import { createServer, Socket } from 'net';
+import { shell } from 'electron';
 import pidtree from 'pidtree';
 import pidusage from 'pidusage';
 import { Service } from '../shared/types';
@@ -55,6 +56,46 @@ async function findFreePort(startPort: number): Promise<number> {
   return 0;
 }
 
+// Check if a port is accepting connections (i.e. service is ready)
+function isPortReady(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new Socket();
+    socket.setTimeout(300);
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, '127.0.0.1');
+  });
+}
+
+// Poll a port until it's ready, then run a callback
+async function waitForPortReady(
+  port: number,
+  onReady: () => void,
+  shouldStop: () => boolean,
+  maxWaitMs = 120_000
+): Promise<void> {
+  const start = Date.now();
+  const pollInterval = 500;
+  while (Date.now() - start < maxWaitMs) {
+    if (shouldStop()) return;
+    if (await isPortReady(port)) {
+      onReady();
+      return;
+    }
+    await delay(pollInterval);
+  }
+}
+
 export class ServiceManager {
   private configManager: ConfigManager;
   private processes: Map<string, ChildProcess>;
@@ -63,6 +104,7 @@ export class ServiceManager {
   private crashCounts: Map<string, { count: number; firstCrash: number }>;
   private manuallyStopped: Set<string>;
   private activePorts: Map<string, number>; // serviceId -> actual port in use
+  private lastStats: Map<string, { cpu: string; memory: string }>;
 
   constructor(configManager: ConfigManager) {
     this.configManager = configManager;
@@ -72,6 +114,7 @@ export class ServiceManager {
     this.crashCounts = new Map();
     this.manuallyStopped = new Set();
     this.activePorts = new Map();
+    this.lastStats = new Map();
   }
 
   async startService(serviceId: string): Promise<boolean> {
@@ -165,13 +208,30 @@ export class ServiceManager {
         service.status = 'crashed';
       });
 
-      // Mark as running after 1 second (if still alive)
-      setTimeout(() => {
-        if (childProcess.killed === false && childProcess.exitCode === null) {
-          service.status = 'running';
-          console.log(`Service ${serviceId} started successfully on port ${assignedPort || 'auto'}`);
-        }
-      }, 1000);
+      // If the service has a port, poll until it's accepting connections
+      if (assignedPort) {
+        const portToCheck = assignedPort;
+        waitForPortReady(
+          portToCheck,
+          () => {
+            if (childProcess.killed || childProcess.exitCode !== null) return;
+            service.status = 'running';
+            console.log(`Service ${serviceId} is ready on port ${portToCheck}`);
+            this.handleLog(serviceId, 'INFO', `✓ Service is ready — opening http://localhost:${portToCheck}`);
+            // Auto-launch the browser
+            shell.openExternal(`http://localhost:${portToCheck}`);
+          },
+          () => childProcess.killed || childProcess.exitCode !== null
+        );
+      } else {
+        // No port configured — mark as running after 1 second
+        setTimeout(() => {
+          if (childProcess.killed === false && childProcess.exitCode === null) {
+            service.status = 'running';
+            console.log(`Service ${serviceId} started successfully`);
+          }
+        }, 1000);
+      }
 
       return true;
     } catch (error) {
@@ -401,6 +461,55 @@ export class ServiceManager {
     return `${seconds}s`;
   }
 
+  // Get CPU usage for a process tree on Windows using wmic
+  private getWindowsCpuUsage(pid: number): number {
+    try {
+      // Get all PIDs in the tree
+      let pids: number[] = [pid];
+      try {
+        const wmicTree = execSync(
+          `wmic process where (ParentProcessId=${pid}) get ProcessId /format:csv`,
+          { timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }
+        ).toString();
+        const childPids = wmicTree
+          .split('\n')
+          .map(line => line.trim().split(',').pop())
+          .filter(Boolean)
+          .map(Number)
+          .filter(n => !isNaN(n) && n > 0);
+        if (childPids.length > 0) pids = [pid, ...childPids];
+      } catch { /* use just the main pid */ }
+
+      // Get CPU time for all PIDs using a single wmic call
+      const pidFilter = pids.map(p => `ProcessId=${p}`).join(' OR ');
+      const output = execSync(
+        `wmic process where "${pidFilter}" get ProcessId,PercentProcessorTime /format:csv`,
+        { timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }
+      ).toString();
+
+      // wmic PercentProcessorTime is not always available; fall back to kernel+user time delta
+      // Try alternative: use PowerShell Get-Process which gives CPU seconds
+      const psOutput = execSync(
+        `powershell -NoProfile -Command "Get-Process -Id ${pids.join(',')} -ErrorAction SilentlyContinue | Select-Object -Property Id,CPU | ConvertTo-Csv -NoTypeInformation"`,
+        { timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }
+      ).toString();
+
+      let totalCpuSeconds = 0;
+      const lines = psOutput.split('\n').slice(1); // skip header
+      for (const line of lines) {
+        const parts = line.trim().replace(/"/g, '').split(',');
+        if (parts.length >= 2) {
+          const cpuSeconds = parseFloat(parts[1]);
+          if (!isNaN(cpuSeconds)) totalCpuSeconds += cpuSeconds;
+        }
+      }
+
+      return totalCpuSeconds;
+    } catch {
+      return -1;
+    }
+  }
+
   async updateServiceStats(): Promise<void> {
     const services = this.configManager.getAllServices();
     for (const service of services) {
@@ -419,7 +528,7 @@ export class ServiceManager {
         let totalMem = 0;
         let gotStats = false;
 
-        // Try 1: get full process tree stats
+        // Try 1: get full process tree stats via pidtree + pidusage
         try {
           const pids = await pidtree(proc.pid, { root: true });
           const statsMap = await pidusage(pids);
@@ -429,7 +538,7 @@ export class ServiceManager {
               totalMem += statsMap[pid].memory;
             }
           }
-          gotStats = totalCpu > 0 || totalMem > 0;
+          gotStats = totalMem > 0;
         } catch {
           // pidtree can fail on Windows shell-spawned processes
         }
@@ -448,19 +557,57 @@ export class ServiceManager {
           }
         }
 
+        // On Windows, if CPU is 0 but process is running, use PowerShell-based CPU delta
+        if (gotStats && totalCpu === 0 && process.platform === 'win32') {
+          const prevSnapshot = this.lastStats.get(service.id);
+          const cpuSeconds = this.getWindowsCpuUsage(proc.pid);
+          const now = Date.now();
+
+          if (cpuSeconds >= 0 && prevSnapshot && (prevSnapshot as any)._cpuSeconds !== undefined) {
+            const prevCpuSeconds = (prevSnapshot as any)._cpuSeconds as number;
+            const prevTime = (prevSnapshot as any)._time as number;
+            const elapsedSec = (now - prevTime) / 1000;
+            if (elapsedSec > 0) {
+              totalCpu = ((cpuSeconds - prevCpuSeconds) / elapsedSec) * 100;
+              if (totalCpu < 0) totalCpu = 0;
+            }
+          }
+
+          // Store snapshot for next delta calculation
+          if (cpuSeconds >= 0) {
+            const existing = this.lastStats.get(service.id) || { cpu: '0%', memory: '0 MB' };
+            (existing as any)._cpuSeconds = cpuSeconds;
+            (existing as any)._time = now;
+            this.lastStats.set(service.id, existing);
+          }
+        }
+
         if (gotStats) {
           const memMB = totalMem / (1024 * 1024);
           service.memory = memMB >= 1024
             ? `${(memMB / 1024).toFixed(1)} GB`
             : `${Math.round(memMB)} MB`;
           service.cpu = `${totalCpu.toFixed(1)}%`;
+          const statsEntry = this.lastStats.get(service.id) || { cpu: '0%', memory: '0 MB' };
+          statsEntry.cpu = service.cpu;
+          statsEntry.memory = service.memory;
+          this.lastStats.set(service.id, statsEntry);
         } else {
-          service.memory = '0 MB';
-          service.cpu = '0%';
+          // pidusage failed — use last known good values instead of resetting to 0
+          const cached = this.lastStats.get(service.id);
+          if (cached) {
+            service.cpu = cached.cpu;
+            service.memory = cached.memory;
+          } else {
+            service.memory = '0 MB';
+            service.cpu = '0%';
+          }
         }
       } else {
+        // Service is not running — reset to 0 and clear cache
         service.memory = '0 MB';
         service.cpu = '0%';
+        this.lastStats.delete(service.id);
       }
     }
   }

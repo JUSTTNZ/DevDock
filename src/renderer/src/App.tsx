@@ -70,8 +70,7 @@ function App() {
         .main-content {
           flex: 1;
           padding: 32px;
-          overflow-y: auto;
-          max-height: 100vh;
+          min-height: 100vh;
         }
       `}</style>
     </div>
